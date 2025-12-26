@@ -1,4 +1,5 @@
 import * as operationRepository from './operation.repository.js';
+import * as custodyRepository from '../custody/custody.repository.js';
 import * as auditService from '../audit/audit.service.js';
 import * as custodyService from '../custody/custody.service.js';
 import * as fireblocksService from '../vault/fireblocks.service.js';
@@ -57,6 +58,83 @@ export const initiateOperation = async (data, actor, context = {}) => {
 };
 
 /**
+ * Initiate a mint operation with validation (MAKER role)
+ */
+export const initiateMintOperation = async (data, actor, context = {}) => {
+    const { assetId, tokenSymbol, tokenName, totalSupply, decimals, blockchainId, vaultWalletId } = data;
+
+    // Validate required parameters
+    const missingFields = [];
+    if (!assetId) missingFields.push('assetId');
+    if (!tokenSymbol) missingFields.push('tokenSymbol');
+    if (!tokenName) missingFields.push('tokenName');
+    if (totalSupply === undefined || totalSupply === null) missingFields.push('totalSupply');
+    if (decimals === undefined || decimals === null) missingFields.push('decimals');
+    if (!blockchainId) missingFields.push('blockchainId');
+
+    if (missingFields.length > 0) {
+        throw BadRequestError(`Missing required parameters: ${missingFields.join(', ')}`);
+    }
+
+    // Find custody record by assetId
+    const custodyRecord = await custodyRepository.findByAssetId(assetId);
+    if (!custodyRecord) {
+        throw NotFoundError(`Asset ${assetId} not found in custody`);
+    }
+
+    // Validate asset is in LINKED status
+    if (custodyRecord.status !== CustodyStatus.LINKED) {
+        throw BadRequestError(`Asset must be in LINKED status. Current status: ${custodyRecord.status}`);
+    }
+
+    // Check for existing pending operations to prevent concurrent conflicts
+    const pending = await operationRepository.findPendingByCustodyRecord(custodyRecord.id);
+    if (pending.length > 0) {
+        throw BadRequestError(`Asset ${assetId} already has pending operations`);
+    }
+
+    // Create operation in PENDING_CHECKER state
+    const operation = await operationRepository.createOperation({
+        operationType: OperationType.MINT,
+        custodyRecordId: custodyRecord.id,
+        vaultWalletId,
+        payload: {
+            assetId,
+            tokenSymbol,
+            tokenName,
+            totalSupply,
+            decimals,
+            blockchainId
+        },
+        initiatedBy: actor,
+        status: OperationStatus.PENDING_CHECKER
+    });
+
+    // Log audit event
+    await auditService.logEvent('OPERATION_CREATED', {
+        operationId: operation.id,
+        operationType: OperationType.MINT,
+        assetId,
+        tokenSymbol,
+        initiatedBy: actor
+    }, {
+        custodyRecordId: custodyRecord.id,
+        operationId: operation.id,
+        actor,
+        ...context
+    });
+
+    logger.info('Mint operation initiated', { 
+        operationId: operation.id, 
+        assetId, 
+        tokenSymbol,
+        initiatedBy: actor 
+    });
+
+    return operation;
+};
+
+/**
  * Approve an operation (CHECKER role)
  */
 export const approveOperation = async (operationId, actor, context = {}) => {
@@ -80,10 +158,12 @@ export const approveOperation = async (operationId, actor, context = {}) => {
         approvedBy: actor
     });
 
-    // Log audit event
+    // Log audit event with checker identity
     await auditService.logEvent('OPERATION_APPROVED', {
         operationId,
-        approvedBy: actor
+        approvedBy: actor,
+        checkerIdentity: actor,
+        action: 'Operation approved by checker'
     }, {
         custodyRecordId: operation.custodyRecordId,
         operationId,
@@ -312,6 +392,7 @@ export const getOperationDetails = async (id) => {
 
 export default {
     initiateOperation,
+    initiateMintOperation,
     approveOperation,
     rejectOperation,
     executeOperation,

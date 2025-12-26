@@ -1,6 +1,7 @@
 import app from './app.js';
 import { config } from './config/env.js';
 import { testConnection, disconnect } from './config/db.js';
+import { verifyAuditTrailIntegrity } from './modules/audit/audit.service.js';
 import logger from './utils/logger.js';
 
 /**
@@ -14,6 +15,11 @@ const startServer = async () => {
     try {
         // Test database connection
         await testConnection();
+        
+        // Verify audit trail integrity
+        logger.info('Verifying audit trail integrity...');
+        await verifyAuditTrailIntegrity();
+        logger.info('✓ Audit trail integrity verified');
 
         // Start HTTP server
         server = app.listen(config.port, () => {

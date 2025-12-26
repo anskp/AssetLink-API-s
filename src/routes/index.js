@@ -4,6 +4,8 @@ import custodyRoutes from './custody.routes.js';
 import auditRoutes from './audit.routes.js';
 import assetRoutes from './asset.routes.js';
 import operationRoutes from './operation.routes.js';
+import vaultRoutes from './vault.routes.js';
+import marketplaceRoutes from './marketplace.routes.js';
 import { authenticate } from '../modules/auth/auth.middleware.js';
 
 /**
@@ -14,8 +16,6 @@ import { authenticate } from '../modules/auth/auth.middleware.js';
 const router = express.Router();
 
 // Import route modules (will be implemented in future sprints)
-// import operationRoutes from './operation.routes.js';
-// import vaultRoutes from './vault.routes.js';
 // import ledgerRoutes from './ledger.routes.js';
 // import marketplaceRoutes from './marketplace.routes.js';
 
@@ -52,13 +52,16 @@ router.use('/assets', authenticate, assetRoutes);
 // Mount operation routes
 router.use('/operations', authenticate, operationRoutes);
 
+// Mount vault routes
+router.use('/vaults', authenticate, vaultRoutes);
+
 // Mount audit routes
 router.use('/audit', authenticate, auditRoutes);
 
+// Mount marketplace routes
+router.use('/marketplace', authenticate, marketplaceRoutes);
+
 // Mount other route modules (placeholder for future sprints)
-// router.use('/operations', authenticate, operationRoutes);
-// router.use('/vaults', authenticate, vaultRoutes);
 // router.use('/ledger', authenticate, ledgerRoutes);
-// router.use('/marketplace', authenticate, marketplaceRoutes);
 
 export default router;

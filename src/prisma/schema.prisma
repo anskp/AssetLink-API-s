@@ -30,8 +30,9 @@ model ApiKey {
 // Fireblocks Vault Metadata
 model VaultWallet {
   id              String   @id @default(uuid())
-  fireblocksId    String   @unique
+  fireblocksId    String   // Fireblocks vault ID (not unique - one vault has multiple wallets)
   blockchain      String   // ETH, MATIC, etc.
+  address         String?  // Wallet address for this blockchain
   vaultType       String   // CUSTODY, SETTLEMENT
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
@@ -40,6 +41,7 @@ model VaultWallet {
   custodyRecords  CustodyRecord[]
   operations      CustodyOperation[]
 
+  @@unique([fireblocksId, blockchain])
   @@index([fireblocksId])
   @@map("vault_wallets")
 }
@@ -190,4 +192,82 @@ model AuditLog {
   @@index([eventType])
   @@index([timestamp])
   @@map("audit_logs")
+}
+
+// Marketplace Listing
+model Listing {
+  id                String   @id @default(uuid())
+  assetId           String
+  custodyRecordId   String
+  
+  sellerId          String   // User ID of the seller
+  price             String   // Decimal string for precision
+  currency          String   @default("USD")
+  
+  status            String   // ACTIVE, SOLD, CANCELLED, EXPIRED
+  
+  expiryDate        DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  bids              Bid[]
+
+  @@index([assetId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([expiryDate])
+  @@map("listings")
+}
+
+// Marketplace Bid
+model Bid {
+  id                String   @id @default(uuid())
+  listingId         String
+  listing           Listing  @relation(fields: [listingId], references: [id])
+  
+  buyerId           String   // User ID of the buyer
+  amount            String   // Decimal string for precision
+  status            String   // PENDING, ACCEPTED, REJECTED
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([listingId])
+  @@index([buyerId])
+  @@index([status])
+  @@map("bids")
+}
+
+// Off-Chain Ownership Ledger
+model Ownership {
+  id                String   @id @default(uuid())
+  assetId           String
+  custodyRecordId   String
+  
+  ownerId           String   // User ID of the beneficial owner
+  quantity          String   // Decimal string for precision
+  
+  acquiredAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([assetId, ownerId])
+  @@index([assetId])
+  @@index([ownerId])
+  @@map("ownerships")
+}
+
+// User Account Balances (for marketplace settlement)
+model UserBalance {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  
+  balance           String   // Decimal string for precision
+  currency          String   @default("USD")
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@map("user_balances")
 }

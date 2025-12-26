@@ -1,11 +1,12 @@
 // AssetLink Premium Custody Dashboard
 // API Configuration
 const API_BASE = 'http://localhost:3000/v1';
-const API_KEY = 'ak_b82e11138410e62867c9ab42fd51f095';
+const API_KEY = 'ak_daa454e75c3a0ad934eb054c886fcdc1';
 
 // State
 let currentView = 'overview';
 let currentRole = 'issuer'; // platform, issuer, investor, checker
+let currentUserId = 'user-123'; // Simulated user ID
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -22,6 +23,14 @@ function initializeRoleSwitcher() {
     roleSelect.value = currentRole;
     roleSelect.addEventListener('change', (e) => {
         currentRole = e.target.value;
+        
+        // Update user ID based on role
+        if (currentRole === 'investor') {
+            currentUserId = 'user-456'; // Investor user
+        } else {
+            currentUserId = 'user-123'; // Issuer user
+        }
+        
         updateUIForRole();
         // Switch to appropriate view for the role
         const defaultViews = {
@@ -103,7 +112,7 @@ function loadViewData(view) {
         case 'custody': loadCustodyRecords(); break;
         case 'mint-burn': loadMintBurn(); break;
         case 'marketplace': loadMarketplace(); break;
-        case 'portfolio': loadPortfolio(); break;
+        case 'portfolio': loadPortfolio(); loadMyListings(); break;
         case 'approvals': loadApprovals(); break;
         case 'audit': loadAuditTrail(); break;
         case 'api-keys': loadApiKeys(); break;
@@ -242,42 +251,89 @@ async function loadMintBurn() {
 }
 
 async function loadMarketplace() {
-    const data = await apiCall('/custody?status=MINTED');
     const container = document.getElementById('marketplace-list');
     if (!container) return;
 
-    if (!data || !data.records || data.records.length === 0) {
-        container.innerHTML = '<div class="loading">Inventory currently sold out</div>';
+    // Get active marketplace listings
+    const data = await apiCall('/marketplace/listings?status=ACTIVE');
+    
+    if (!data || !data.data || data.data.length === 0) {
+        container.innerHTML = '<div class="empty-state">No tokens available for purchase</div>';
         return;
     }
 
-    container.innerHTML = data.records.map(r => `
-        <div class="market-card glass" style="padding: 1.5rem; border: 1px solid var(--border); background: var(--bg-card);">
-            <div class="stat-icon">🪙</div>
-            <h3>${r.assetId}</h3>
-            <p class="sub-text">Tier 1 Institutional Asset</p>
-            <div style="margin: 1rem 0; font-size: 0.875rem;">
-                <div><strong>Standard:</strong> ERC-721</div>
-                <div><strong>Network:</strong> Ethereum Mainnet</div>
+    container.innerHTML = data.data.map(listing => {
+        const asset = listing.asset || {};
+        const metadata = asset.assetMetadata || {};
+        
+        return `
+        <div class="market-card">
+            <div class="market-header">
+                <h3>${metadata.assetName || listing.assetId}</h3>
+                <span class="badge badge-success">ACTIVE</span>
             </div>
-            <button class="btn btn-primary w-full" onclick="initiateOp('${r.id}', 'TRANSFER')">Aquire Token</button>
+            <div class="market-details">
+                <div class="detail-row">
+                    <span>Asset ID:</span>
+                    <strong>${listing.assetId}</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Type:</span>
+                    <strong>${metadata.assetType || 'RWA'}</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Price:</span>
+                    <strong class="price">$${parseFloat(listing.price).toLocaleString()}</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Blockchain:</span>
+                    <strong>${asset.blockchain || 'ETH'}</strong>
+                </div>
+            </div>
+            ${currentRole === 'investor' ? `
+                <button class="btn btn-primary w-full" onclick="showBidModal('${listing.id}', '${listing.price}', '${listing.assetId}')">
+                    Place Bid
+                </button>
+            ` : `
+                <div class="sub-text" style="text-align: center; padding: 0.5rem;">
+                    Switch to Investor role to purchase
+                </div>
+            `}
         </div>
-    `).join('');
+    `}).join('');
 }
 
 async function loadPortfolio() {
     const tbody = document.getElementById('portfolio-table-body');
     if (!tbody) return;
 
-    tbody.innerHTML = `
+    // Get user's owned assets
+    const data = await apiCall(`/marketplace/portfolio/${currentUserId}`);
+    
+    if (!data || !data.data || data.data.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="empty-state">No assets in portfolio</td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = data.data.map(item => {
+        const metadata = item.asset?.assetMetadata || {};
+        return `
         <tr>
-            <td><strong>ROLEX-SUB-01</strong></td>
-            <td>RWA-RX</td>
-            <td>1.00</td>
-            <td>$12,500.00</td>
-            <td><button class="btn btn-sm btn-secondary">Sell</button></td>
+            <td><strong>${item.assetId}</strong></td>
+            <td>${metadata.assetType || 'RWA'}</td>
+            <td>${item.quantity}</td>
+            <td>$${parseFloat(metadata.estimatedValue || 0).toLocaleString()}</td>
+            <td>
+                <button class="btn btn-sm btn-primary" onclick="showListModal('${item.assetId}', '${item.custodyRecordId}')">
+                    List for Sale
+                </button>
+            </td>
         </tr>
-    `;
+    `}).join('');
 }
 
 async function loadApprovals() {
@@ -590,9 +646,208 @@ function getStatusBadgeClass(s) {
 }
 
 function formatDate(d) { return d ? new Date(d).toLocaleString() : '-'; }
-function showError(m) { alert('System Notification: ' + m); }
-function showSuccess(m) { alert('Authorization Success: ' + m); }
+function showError(m) { alert('❌ ' + m); }
+function showSuccess(m) { alert('✅ ' + m); }
+
+// Marketplace Functions
+function showListModal(assetId, custodyRecordId) {
+    const modal = document.getElementById('list-token-modal');
+    if (!modal) return;
+    
+    document.getElementById('list-asset-id').value = assetId;
+    document.getElementById('list-custody-id').value = custodyRecordId;
+    modal.classList.add('active');
+}
+
+function closeListModal() {
+    document.getElementById('list-token-modal').classList.remove('active');
+}
+
+async function confirmListToken() {
+    const assetId = document.getElementById('list-asset-id').value;
+    const custodyRecordId = document.getElementById('list-custody-id').value;
+    const price = document.getElementById('list-price-input').value;
+    const expiryDays = document.getElementById('list-expiry-input').value || 30;
+    
+    if (!price || parseFloat(price) <= 0) {
+        return showError('Please enter a valid price');
+    }
+    
+    const btn = document.getElementById('confirm-list-btn');
+    btn.disabled = true;
+    btn.innerHTML = 'Creating Listing...';
+    
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + parseInt(expiryDays));
+    
+    const result = await apiCall('/marketplace/listings', 'POST', {
+        assetId,
+        custodyRecordId,
+        price,
+        currency: 'USD',
+        expiryDate: expiryDate.toISOString(),
+        sellerId: currentUserId
+    });
+    
+    if (result && result.success) {
+        showSuccess('Token listed on marketplace!');
+        closeListModal();
+        loadPortfolio();
+        loadMarketplace();
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = 'Create Listing';
+}
+
+function showBidModal(listingId, currentPrice, assetId) {
+    const modal = document.getElementById('bid-modal');
+    if (!modal) return;
+    
+    document.getElementById('bid-listing-id').value = listingId;
+    document.getElementById('bid-asset-name').textContent = assetId;
+    document.getElementById('bid-current-price').textContent = `$${parseFloat(currentPrice).toLocaleString()}`;
+    document.getElementById('bid-amount-input').value = currentPrice;
+    modal.classList.add('active');
+}
+
+function closeBidModal() {
+    document.getElementById('bid-modal').classList.remove('active');
+}
+
+async function confirmBid() {
+    const listingId = document.getElementById('bid-listing-id').value;
+    const amount = document.getElementById('bid-amount-input').value;
+    
+    if (!amount || parseFloat(amount) <= 0) {
+        return showError('Please enter a valid bid amount');
+    }
+    
+    const btn = document.getElementById('confirm-bid-btn');
+    btn.disabled = true;
+    btn.innerHTML = 'Placing Bid...';
+    
+    const result = await apiCall(`/marketplace/listings/${listingId}/bids`, 'POST', {
+        amount,
+        buyerId: currentUserId
+    });
+    
+    if (result && result.success) {
+        showSuccess('Bid placed successfully! Waiting for seller approval.');
+        closeBidModal();
+        loadMarketplace();
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = 'Place Bid';
+}
+
+// My Listings (for issuers)
+async function loadMyListings() {
+    const container = document.getElementById('my-listings-container');
+    if (!container) return;
+    
+    const data = await apiCall(`/marketplace/listings?sellerId=${currentUserId}`);
+    
+    if (!data || !data.data || data.data.length === 0) {
+        container.innerHTML = '<div class="empty-state">No active listings</div>';
+        return;
+    }
+    
+    container.innerHTML = data.data.map(listing => {
+        const bids = listing.bids || [];
+        const highestBid = bids.length > 0 ? Math.max(...bids.map(b => parseFloat(b.amount))) : 0;
+        
+        return `
+        <div class="listing-card">
+            <div class="listing-header">
+                <h4>${listing.assetId}</h4>
+                <span class="badge badge-${listing.status === 'ACTIVE' ? 'success' : 'secondary'}">${listing.status}</span>
+            </div>
+            <div class="listing-details">
+                <div class="detail-row">
+                    <span>Listed Price:</span>
+                    <strong>$${parseFloat(listing.price).toLocaleString()}</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Bids Received:</span>
+                    <strong>${bids.length}</strong>
+                </div>
+                ${highestBid > 0 ? `
+                <div class="detail-row">
+                    <span>Highest Bid:</span>
+                    <strong class="price">$${highestBid.toLocaleString()}</strong>
+                </div>
+                ` : ''}
+            </div>
+            ${listing.status === 'ACTIVE' && bids.length > 0 ? `
+                <button class="btn btn-sm btn-primary w-full" onclick="showBidsModal('${listing.id}')">
+                    View Bids (${bids.length})
+                </button>
+            ` : ''}
+        </div>
+    `}).join('');
+}
+
+async function showBidsModal(listingId) {
+    const modal = document.getElementById('bids-modal');
+    if (!modal) return;
+    
+    const data = await apiCall(`/marketplace/listings/${listingId}/bids`);
+    const container = document.getElementById('bids-list');
+    
+    if (!data || !data.data || data.data.length === 0) {
+        container.innerHTML = '<div class="empty-state">No bids yet</div>';
+    } else {
+        container.innerHTML = data.data.map(bid => `
+            <div class="bid-item">
+                <div class="bid-info">
+                    <div><strong>$${parseFloat(bid.amount).toLocaleString()}</strong></div>
+                    <div class="sub-text">Buyer: ${bid.buyerId}</div>
+                    <div class="sub-text">${formatDate(bid.createdAt)}</div>
+                </div>
+                ${bid.status === 'PENDING' ? `
+                    <button class="btn btn-sm btn-primary" onclick="acceptBid('${bid.id}')">
+                        Accept
+                    </button>
+                ` : `
+                    <span class="badge badge-${bid.status === 'ACCEPTED' ? 'success' : 'secondary'}">${bid.status}</span>
+                `}
+            </div>
+        `).join('');
+    }
+    
+    modal.classList.add('active');
+}
+
+function closeBidsModal() {
+    document.getElementById('bids-modal').classList.remove('active');
+}
+
+async function acceptBid(bidId) {
+    if (!confirm('Accept this bid? This will transfer ownership immediately.')) return;
+    
+    const result = await apiCall(`/marketplace/bids/${bidId}/accept`, 'POST', {
+        sellerId: currentUserId
+    });
+    
+    if (result && result.success) {
+        showSuccess('Bid accepted! Ownership transferred and payment settled.');
+        closeBidsModal();
+        loadMyListings();
+        loadMarketplace();
+    }
+}
 
 window.initiateOp = initiateOp;
 window.processOp = processOp;
 window.viewDetails = (id) => alert('Asset Reference: ' + id);
+window.showListModal = showListModal;
+window.closeListModal = closeListModal;
+window.confirmListToken = confirmListToken;
+window.showBidModal = showBidModal;
+window.closeBidModal = closeBidModal;
+window.confirmBid = confirmBid;
+window.showBidsModal = showBidsModal;
+window.closeBidsModal = closeBidsModal;
+window.acceptBid = acceptBid;

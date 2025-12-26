@@ -1,0 +1,14 @@
+{
+  "assetId": "ROLEX-2025-001",
+  "assetType": "WATCH",
+  "assetName": "Rolex Submariner",
+  "description": "Luxury dive watch",
+  "manufacturer": "Rolex",
+  "model": "Submariner",
+  "serialNumber": "SN123456",
+  "yearManufactured": 2025,
+  "estimatedValue": "15000",
+  "currency": "USD",
+  "images": ["https://example.com/rolex.jpg"],
+  "documents": ["https://example.com/cert.pdf"]
+}

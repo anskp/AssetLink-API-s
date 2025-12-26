@@ -31,6 +31,26 @@ export const initiateOperation = async (req, res, next) => {
 };
 
 /**
+ * Initiate mint operation
+ * POST /v1/operations/mint
+ */
+export const initiateMintOperation = async (req, res, next) => {
+    try {
+        const { assetId, tokenSymbol, tokenName, totalSupply, decimals, blockchainId, vaultWalletId } = req.body;
+
+        const operation = await operationService.initiateMintOperation(
+            { assetId, tokenSymbol, tokenName, totalSupply, decimals, blockchainId, vaultWalletId },
+            req.auth?.publicKey || 'anonymous',
+            { ipAddress: req.ip, userAgent: req.get('user-agent') }
+        );
+
+        res.status(201).json(operation);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
  * Approve operation
  * POST /v1/operations/:id/approve
  */
@@ -110,6 +130,7 @@ export const getOperationDetails = async (req, res, next) => {
 
 export default {
     initiateOperation,
+    initiateMintOperation,
     approveOperation,
     rejectOperation,
     listOperations,

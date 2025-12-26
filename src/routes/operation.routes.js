@@ -15,6 +15,7 @@ router.get('/:id', requirePermission('read'), operationController.getOperationDe
 
 // Initiate (Write permission - Maker role)
 router.post('/', requirePermission('write'), operationController.initiateOperation);
+router.post('/mint', requirePermission('write'), operationController.initiateMintOperation);
 
 // Approve/Reject (Admin permission - Checker role)
 router.post('/:id/approve', requirePermission('admin'), operationController.approveOperation);
