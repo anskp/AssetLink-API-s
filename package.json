@@ -18,12 +18,14 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@fireblocks/ts-sdk": "^13.0.0",
     "@prisma/client": "^6.2.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "decimal.js": "^10.4.3",
     "dotenv": "^16.4.7",
+    "ethers": "^6.16.0",
     "express": "^5.2.1",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",

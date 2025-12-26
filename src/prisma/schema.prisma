@@ -127,8 +127,8 @@ model CustodyOperation {
   status              String   // PENDING_MAKER, PENDING_CHECKER, APPROVED, EXECUTED, REJECTED, FAILED
   
   // References
-  custodyRecordId     String
-  custodyRecord       CustodyRecord @relation(fields: [custodyRecordId], references: [id])
+  custodyRecordId     String?
+  custodyRecord       CustodyRecord? @relation(fields: [custodyRecordId], references: [id])
   
   vaultWalletId       String?
   vaultWallet         VaultWallet? @relation(fields: [vaultWalletId], references: [id])

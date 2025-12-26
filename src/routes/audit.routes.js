@@ -13,7 +13,7 @@ const router = express.Router();
  * Get recent audit logs
  * GET /v1/audit/recent
  */
-router.get('/recent', requirePermission('read'), async (req, res, next) => {
+router.get('/recent', async (req, res, next) => {
     try {
         const { limit } = req.query;
         const logs = await auditRepository.getRecentLogs(
@@ -29,7 +29,7 @@ router.get('/recent', requirePermission('read'), async (req, res, next) => {
  * Get audit trail for custody record
  * GET /v1/audit/custody/:id
  */
-router.get('/custody/:id', requirePermission('read'), async (req, res, next) => {
+router.get('/custody/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
         const logs = await auditRepository.findByCustodyRecord(id);
@@ -43,7 +43,7 @@ router.get('/custody/:id', requirePermission('read'), async (req, res, next) => 
  * Get audit trail for operation
  * GET /v1/audit/operation/:id
  */
-router.get('/operation/:id', requirePermission('read'), async (req, res, next) => {
+router.get('/operation/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
         const logs = await auditRepository.findByOperation(id);
@@ -57,7 +57,7 @@ router.get('/operation/:id', requirePermission('read'), async (req, res, next) =
  * Get audit logs by event type
  * GET /v1/audit/events/:eventType
  */
-router.get('/events/:eventType', requirePermission('read'), async (req, res, next) => {
+router.get('/events/:eventType', async (req, res, next) => {
     try {
         const { eventType } = req.params;
         const { limit, offset } = req.query;

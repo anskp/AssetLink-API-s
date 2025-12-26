@@ -9,12 +9,12 @@ import { CustodyStatus } from '../../enums/custodyStatus.js';
 /**
  * Create new custody record
  */
-export const createCustodyRecord = async (assetId) => {
+export const createCustodyRecord = async (assetId, status = CustodyStatus.LINKED) => {
     return await prisma.custodyRecord.create({
         data: {
             assetId,
-            status: CustodyStatus.LINKED,
-            linkedAt: new Date()
+            status,
+            linkedAt: status === CustodyStatus.LINKED ? new Date() : null
         }
     });
 };
@@ -92,6 +92,10 @@ export const listCustodyRecords = async (filters = {}) => {
                         fireblocksId: true,
                         blockchain: true
                     }
+                },
+                operations: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 5
                 }
             },
             orderBy: { createdAt: 'desc' },

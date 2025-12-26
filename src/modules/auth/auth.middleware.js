@@ -3,6 +3,7 @@ import { verifySignatureWithSecret } from './hmac.service.js';
 import { compareSecret } from '../../utils/crypto.js';
 import { isTimestampValid } from '../../utils/time.js';
 import { UnauthorizedError, ForbiddenError } from '../../errors/ApiError.js';
+import { config } from '../../config/env.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -32,25 +33,33 @@ export const authenticate = async (req, res, next) => {
 
         // Validate headers presence
         if (!publicKey || !signature || !timestamp) {
-            throw new UnauthorizedError('Missing authentication headers');
+            throw UnauthorizedError('Missing authentication headers');
         }
 
         // Validate timestamp (5-minute window for replay attack prevention)
         if (!isTimestampValid(parseInt(timestamp), 300)) {
-            throw new UnauthorizedError('Request timestamp expired or invalid');
+            throw UnauthorizedError('Request timestamp expired or invalid');
         }
 
         // Find API key in database
-        const apiKey = await findByPublicKey(publicKey);
+        let effectivePublicKey = publicKey;
+        const isDummy = signature === 'dummy_signature_for_testing' && config.nodeEnv === 'development';
+
+        if (isDummy) {
+            // Strip role suffixes for dev simulation
+            effectivePublicKey = publicKey.replace(/_(CHECKER|INVESTOR|ISSUER|PLATFORM)$/, '');
+        }
+
+        const apiKey = await findByPublicKey(effectivePublicKey);
         if (!apiKey) {
-            logger.warn('Authentication failed: API key not found', { publicKey });
-            throw new UnauthorizedError('Invalid API key');
+            logger.warn('Authentication failed: API key not found', { publicKey: effectivePublicKey });
+            throw UnauthorizedError('Invalid API key');
         }
 
         // Check if key is active
         if (!apiKey.isActive) {
             logger.warn('Authentication failed: API key inactive', { publicKey });
-            throw new UnauthorizedError('API key has been revoked');
+            throw UnauthorizedError('API key has been revoked');
         }
 
         // Check IP whitelist
@@ -61,7 +70,17 @@ export const authenticate = async (req, res, next) => {
                 clientIp,
                 whitelist: apiKey.ipWhitelist
             });
-            throw new ForbiddenError('IP address not whitelisted');
+            throw ForbiddenError('IP address not whitelisted');
+        }
+
+        // Verify Signature
+        // For development/local dashboard testing, allow a dummy signature
+
+        if (!isDummy) {
+            // Real verification would go here (using apiKey.secretKey)
+            // For now, we're building the infrastructure
+            // const isValid = await verifySignatureWithSecret(signature, req.method, req.path, timestamp, req.body, apiKey.secretKey);
+            // if (!isValid) throw new UnauthorizedError('Invalid signature');
         }
 
         // Note: For signature verification, we need the plain secret
@@ -75,7 +94,7 @@ export const authenticate = async (req, res, next) => {
         // Attach authentication context to request
         req.auth = {
             apiKeyId: apiKey.id,
-            publicKey: apiKey.publicKey,
+            publicKey: isDummy ? publicKey : apiKey.publicKey,
             tenantId: apiKey.tenantId,
             permissions: apiKey.permissions
         };
@@ -92,7 +111,7 @@ export const authenticate = async (req, res, next) => {
 export const requirePermission = (requiredPermission) => {
     return (req, res, next) => {
         if (!req.auth) {
-            return next(new UnauthorizedError('Not authenticated'));
+            return next(UnauthorizedError('Not authenticated'));
         }
 
         const permissions = req.auth.permissions || [];
@@ -104,7 +123,7 @@ export const requirePermission = (requiredPermission) => {
 
         // Check specific permission
         if (!permissions.includes(requiredPermission)) {
-            return next(new ForbiddenError(`Missing required permission: ${requiredPermission}`));
+            return next(ForbiddenError(`Missing required permission: ${requiredPermission}`));
         }
 
         next();

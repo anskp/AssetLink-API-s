@@ -1,6 +1,9 @@
 import * as assetService from './asset.service.js';
+import * as operationService from '../operation/operation.service.js';
+import * as custodyService from '../custody/custody.service.js';
 import { ValidationError } from '../../errors/ValidationError.js';
 import { getAllAssetTypes } from '../../enums/assetType.js';
+import { CustodyStatus } from '../../enums/custodyStatus.js';
 
 /**
  * Asset Controller
@@ -15,33 +18,21 @@ export const createAsset = async (req, res, next) => {
     try {
         const { assetId, ...metadata } = req.body;
 
-        if (!assetId) {
-            throw new ValidationError('Asset ID is required', [
-                { field: 'assetId', message: 'Required field' }
-            ]);
-        }
-
-        if (!metadata.assetType) {
-            throw new ValidationError('Asset type is required', [
-                { field: 'assetType', message: 'Required field' }
-            ]);
-        }
-
-        if (!metadata.assetName) {
-            throw new ValidationError('Asset name is required', [
-                { field: 'assetName', message: 'Required field' }
-            ]);
-        }
-
-        if (!metadata.estimatedValue) {
-            throw new ValidationError('Estimated value is required', [
-                { field: 'estimatedValue', message: 'Required field' }
-            ]);
-        }
-
-        const result = await assetService.linkAssetWithMetadata(
+        // 1. Create a PENDING custody record first to satisfy DB constraints
+        const custodyRecord = await custodyService.linkAsset(
             assetId,
-            metadata,
+            req.auth?.publicKey || 'unknown',
+            {},
+            CustodyStatus.PENDING
+        );
+
+        // 2. Initiate the LINK_ASSET operation pointing to this record
+        const result = await operationService.initiateOperation(
+            {
+                operationType: 'LINK_ASSET',
+                custodyRecordId: custodyRecord.id,
+                payload: { assetId, ...metadata }
+            },
             req.auth?.publicKey || 'unknown',
             {
                 ipAddress: req.ip,
@@ -49,7 +40,12 @@ export const createAsset = async (req, res, next) => {
             }
         );
 
-        res.status(201).json(result);
+        res.status(202).json({
+            message: 'Asset linking operation initiated',
+            operationId: result.id,
+            custodyRecordId: custodyRecord.id,
+            status: 'PENDING_APPROVAL'
+        });
     } catch (error) {
         next(error);
     }

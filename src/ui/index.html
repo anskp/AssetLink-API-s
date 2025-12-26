@@ -4,68 +4,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AssetLink Custody Dashboard</title>
+    <title>AssetLink | Premium Custody Infrastructure</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
     <div class="dashboard">
         <!-- Sidebar -->
-        <aside class="sidebar">
+        <aside class="sidebar glass">
             <div class="logo">
-                <h1>🔐 AssetLink</h1>
-                <p>Custody Dashboard</p>
+                <h1><span>🔐</span> AssetLink</h1>
+                <p>Enterprise Custody</p>
             </div>
-            <div class="role-selector">
-                <label for="role-select">Acting as:</label>
+
+            <div class="role-selector glass">
+                <label>Access Level</label>
                 <select id="role-select" class="select select-sm">
-                    <option value="issuer">Issuer</option>
-                    <option value="investor">Investor</option>
-                    <option value="checker">Checker (Admin)</option>
+                    <option value="platform">Platform Admin</option>
+                    <option value="issuer" selected>Asset Issuer</option>
+                    <option value="investor">Institutional Investor</option>
+                    <option value="checker">Governance Checker</option>
                 </select>
             </div>
+
             <nav class="nav">
-                <a href="#" class="nav-item active" data-view="overview">
-                    <span class="icon">📊</span>
-                    <span>Overview</span>
-                </a>
-                <a href="#" class="nav-item" data-view="custody">
-                    <span class="icon">🏦</span>
-                    <span>Custody Records</span>
-                </a>
-                <!-- Role Specific Items -->
-                <div id="issuer-controls">
-                    <a href="#" class="nav-item" data-view="asset-linking">
-                        <span class="icon">🔗</span>
-                        <span>Link Asset</span>
+                <!-- Global (Visible to Platform/Checker) -->
+                <div class="nav-section" id="global-nav">
+                    <a href="#" class="nav-item active" data-view="overview">
+                        <span class="icon">📊</span>
+                        <span>Global Overview</span>
                     </a>
                 </div>
-                <div id="investor-controls" style="display: none;">
+
+                <!-- Issuer Specific -->
+                <div class="nav-section" id="issuer-nav">
+                    <a href="#" class="nav-item" data-view="custody">
+                        <span class="icon">🏦</span>
+                        <span>Custody Records</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="mint-burn">
+                        <span class="icon">🔥</span>
+                        <span>Mint / Burn</span>
+                    </a>
+                </div>
+
+                <!-- Investor Specific -->
+                <div class="nav-section" id="investor-nav" style="display: none;">
                     <a href="#" class="nav-item" data-view="marketplace">
                         <span class="icon">🛒</span>
                         <span>Marketplace</span>
                     </a>
-                </div>
-                <div id="checker-controls" style="display: none;">
-                    <a href="#" class="nav-item" data-view="approvals">
-                        <span class="icon">⚖️</span>
-                        <span>Pending Approvals</span>
+                    <a href="#" class="nav-item" data-view="portfolio">
+                        <span class="icon">💼</span>
+                        <span>My Portfolio</span>
                     </a>
                 </div>
 
-                <a href="#" class="nav-item" data-view="audit">
-                    <span class="icon">📝</span>
-                    <span>Audit Trail</span>
-                </a>
-                <a href="#" class="nav-item" data-view="api-keys">
-                    <span class="icon">🔑</span>
-                    <span>API Keys</span>
-                </a>
+                <!-- Checker Specific -->
+                <div class="nav-section" id="checker-nav" style="display: none;">
+                    <a href="#" class="nav-item" data-view="approvals">
+                        <span class="icon">⚖️</span>
+                        <span>Approval Queue</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <a href="#" class="nav-item" data-view="audit">
+                        <span class="icon">📝</span>
+                        <span>Audit Trail</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="api-keys">
+                        <span class="icon">🔑</span>
+                        <span>Infrastructure Keys</span>
+                    </a>
+                </div>
             </nav>
+
             <div class="sidebar-footer">
-                <div class="status">
+                <div class="status glass">
                     <span class="status-dot"></span>
-                    <span>System Online</span>
+                    <span>Fireblocks Node: Online</span>
                 </div>
             </div>
         </aside>
@@ -73,13 +94,13 @@
         <!-- Main Content -->
         <main class="main-content">
             <!-- Header -->
-            <header class="header">
+            <header class="header glass">
                 <div class="header-left">
                     <h2 id="page-title">Overview</h2>
                 </div>
-                <div class="header-right">
+                <div class="header-right" id="header-actions">
                     <button class="btn btn-primary" id="link-asset-btn">
-                        <span>+ Link Asset</span>
+                        <span>+ Link New Asset</span>
                     </button>
                 </div>
             </header>
@@ -87,28 +108,28 @@
             <!-- Overview View -->
             <div id="overview-view" class="view active">
                 <div class="stats-grid">
-                    <div class="stat-card">
+                    <div class="stat-card glass">
                         <div class="stat-icon">🏦</div>
                         <div class="stat-content">
                             <div class="stat-label">Total Assets</div>
                             <div class="stat-value" id="stat-total">0</div>
                         </div>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card glass">
                         <div class="stat-icon">🔗</div>
                         <div class="stat-content">
                             <div class="stat-label">Linked</div>
                             <div class="stat-value" id="stat-linked">0</div>
                         </div>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card glass">
                         <div class="stat-icon">🪙</div>
                         <div class="stat-content">
                             <div class="stat-label">Minted</div>
                             <div class="stat-value" id="stat-minted">0</div>
                         </div>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card glass">
                         <div class="stat-icon">📤</div>
                         <div class="stat-content">
                             <div class="stat-label">Withdrawn</div>
@@ -117,29 +138,24 @@
                     </div>
                 </div>
 
-                <div class="section">
-                    <h3>Recent Activity</h3>
+                <div class="section glass">
+                    <div class="section-header">
+                        <h3>Recent Network Activity</h3>
+                    </div>
                     <div class="activity-list" id="recent-activity">
-                        <div class="loading">Loading...</div>
+                        <div class="loading">Inbound stream connecting...</div>
                     </div>
                 </div>
             </div>
 
             <!-- Custody Records View -->
             <div id="custody-view" class="view">
-                <div class="section">
+                <div class="section glass">
                     <div class="section-header">
-                        <h3>Custody Records</h3>
+                        <h3>Institutional Custody</h3>
                         <div class="filters">
-                            <input type="text" id="asset-search" class="input" placeholder="Search by Asset ID...">
-                            <select id="type-filter" class="select">
-                                <option value="">All Types</option>
-                                <option value="WATCH">Watch</option>
-                                <option value="JEWELRY">Jewelry</option>
-                                <option value="ART">Art</option>
-                                <option value="REAL_ESTATE">Real Estate</option>
-                            </select>
-                            <select id="status-filter" class="select">
+                            <input type="text" id="asset-search" class="input glass" placeholder="Search Assets...">
+                            <select id="status-filter" class="select glass">
                                 <option value="">All Statuses</option>
                                 <option value="LINKED">Linked</option>
                                 <option value="MINTED">Minted</option>
@@ -152,17 +168,17 @@
                         <table class="table">
                             <thead>
                                 <tr>
-                                    <th>Asset ID</th>
-                                    <th>Status</th>
-                                    <th>Blockchain</th>
-                                    <th>Token ID</th>
-                                    <th>Linked At</th>
+                                    <th>Asset Asset ID</th>
+                                    <th>Lifecycle Status</th>
+                                    <th>Vault Balance</th>
+                                    <th>Chain Network</th>
+                                    <th>Linked Timestamp</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="custody-table-body">
                                 <tr>
-                                    <td colspan="6" class="loading">Loading...</td>
+                                    <td colspan="6" class="loading">Decrypting records...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -170,63 +186,123 @@
                 </div>
             </div>
 
-            <!-- Audit Trail View -->
-            <div id="audit-view" class="view">
-                <div class="section">
-                    <h3>Audit Trail</h3>
-                    <div class="audit-list" id="audit-list">
-                        <div class="loading">Loading...</div>
+            <!-- Mint / Burn View -->
+            <div id="mint-burn-view" class="view">
+                <div class="section glass">
+                    <div class="section-header">
+                        <h3>Supply Management</h3>
+                    </div>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Asset</th>
+                                    <th>Type</th>
+                                    <th>On-Chain Supply</th>
+                                    <th>Blockchain</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mint-burn-table-body">
+                                <tr>
+                                    <td colspan="5" class="loading">Loading supply data...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
 
             <!-- Marketplace View -->
             <div id="marketplace-view" class="view">
-                <div class="section">
+                <div class="section glass">
                     <div class="section-header">
-                        <h3>Token Marketplace</h3>
+                        <h3>Asset Marketplace</h3>
+                        <div class="filters">
+                            <input type="text" class="input glass" placeholder="Filter assets...">
+                            <select class="select glass">
+                                <option>All Categories</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="marketplace-grid" id="marketplace-list">
-                        <div class="loading">Loading marketplace...</div>
+                        <div class="loading">Scanning marketplace...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Portfolio View -->
+            <div id="portfolio-view" class="view">
+                <div class="section glass">
+                    <div class="section-header">
+                        <h3>My Holdings</h3>
+                    </div>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Asset</th>
+                                    <th>Symbol</th>
+                                    <th>Balance</th>
+                                    <th>Value (USD)</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="portfolio-table-body">
+                                <tr>
+                                    <td colspan="5" class="loading">Calculating portfolio...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
 
             <!-- Approvals View -->
             <div id="approvals-view" class="view">
-                <div class="section">
+                <div class="section glass">
                     <div class="section-header">
-                        <h3>Approval Queue</h3>
+                        <h3>Governance Queue</h3>
                     </div>
                     <div class="approval-list" id="approval-queue">
-                        <div class="loading">No pending approvals</div>
+                        <div class="loading">Queue empty</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audit Trail View -->
+            <div id="audit-view" class="view">
+                <div class="section glass">
+                    <div class="section-header">
+                        <h3>Immutable Ledger Audit</h3>
+                    </div>
+                    <div class="audit-list" id="audit-list">
+                        <div class="loading">Reading audit logs...</div>
                     </div>
                 </div>
             </div>
 
             <!-- API Keys View -->
             <div id="api-keys-view" class="view">
-                <div class="section">
+                <div class="section glass">
                     <div class="section-header">
-                        <h3>API Keys</h3>
-                        <button class="btn btn-primary" id="generate-key-btn">
-                            <span>+ Generate Key</span>
-                        </button>
+                        <h3>Infrastructure Keys</h3>
+                        <button class="btn btn-primary" id="generate-key-btn">New Key</button>
                     </div>
                     <div class="table-container">
                         <table class="table">
                             <thead>
                                 <tr>
-                                    <th>Public Key</th>
-                                    <th>Permissions</th>
+                                    <th>Client ID</th>
+                                    <th>Scopes</th>
                                     <th>Status</th>
-                                    <th>Created</th>
+                                    <th>Rotation Date</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="api-keys-table-body">
                                 <tr>
-                                    <td colspan="5" class="loading">Loading...</td>
+                                    <td colspan="5" class="loading">Fetching keys...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -238,56 +314,107 @@
 
     <!-- Modal for Link Asset -->
     <div id="link-asset-modal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content glass">
             <div class="modal-header">
                 <h3>Link Asset to Custody</h3>
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label for="asset-id-input">Asset ID</label>
-                    <input type="text" id="asset-id-input" class="input" placeholder="e.g., ROLEX-2025-SN-9981">
+                    <label>Asset Asset ID</label>
+                    <input type="text" id="asset-id-input" class="input glass" placeholder="e.g., ROLEX-9981">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="asset-type-input">Asset Type</label>
-                        <select id="asset-type-input" class="select">
-                            <option value="WATCH">Watch</option>
-                            <option value="JEWELRY">Jewelry</option>
-                            <option value="ART">Art</option>
+                        <label>Asset Category</label>
+                        <select id="asset-type-input" class="select glass">
+                            <option value="WATCH">Horology</option>
+                            <option value="JEWELRY">Fine Jewelry</option>
+                            <option value="ART">Fine Art</option>
                             <option value="REAL_ESTATE">Real Estate</option>
-                            <option value="COLLECTIBLE">Collectible</option>
-                            <option value="OTHER">Other</option>
                         </select>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="asset-name-input">Asset Name</label>
-                    <input type="text" id="asset-name-input" class="input" placeholder="e.g., Rolex Submariner">
+                    <label>Asset Display Name</label>
+                    <input type="text" id="asset-name-input" class="input glass"
+                        placeholder="Rolex Submariner 126610LN">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="asset-value-input">Estimated Value</label>
-                        <input type="number" id="asset-value-input" class="input" placeholder="0.00">
+                        <label>Independent Valuation</label>
+                        <input type="number" id="asset-value-input" class="input glass" placeholder="0.00">
                     </div>
                     <div class="form-group">
-                        <label for="asset-currency-input">Currency</label>
-                        <select id="asset-currency-input" class="select">
+                        <label>Settlement Currency</label>
+                        <select id="asset-currency-input" class="select glass">
                             <option value="USD">USD</option>
                             <option value="EUR">EUR</option>
-                            <option value="GBP">GBP</option>
                         </select>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="asset-desc-input">Description</label>
-                    <textarea id="asset-desc-input" class="input" rows="3"
-                        placeholder="Additional details..."></textarea>
+                    <label>Supplemental Data (Market Metadata)</label>
+                    <textarea id="asset-desc-input" class="input glass" rows="3"
+                        placeholder="Condition details, box/papers status..."></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancel-link-btn">Cancel</button>
-                <button class="btn btn-primary" id="confirm-link-btn">Link Asset</button>
+                <button class="btn btn-secondary" id="cancel-link-btn">Discard</button>
+                <button class="btn btn-primary" id="confirm-link-btn">Create Link Record</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Mint Token Metadata -->
+    <div id="mint-token-modal" class="modal">
+        <div class="modal-content glass" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3>Tokenize Asset</h3>
+                <button class="modal-close" onclick="closeMintModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="mint-custody-id">
+                <div class="form-group">
+                    <label>Token Symbol</label>
+                    <input type="text" id="mint-symbol-input" class="input glass" placeholder="e.g., GOLD">
+                </div>
+                <div class="form-group">
+                    <label>Total Supply (Units)</label>
+                    <input type="number" id="mint-supply-input" class="input glass" placeholder="1000000">
+                </div>
+                <div class="form-group">
+                    <label>Blockchain Network</label>
+                    <select id="mint-chain-select" class="select glass">
+                        <option value="ETH_TEST5">Ethereum Goerli (Sandbox)</option>
+                        <option value="POLYGON_MUMBAI">Polygon Mumbai</option>
+                        <option value="SOLANA_DEVNET">Solana Devnet</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeMintModal()">Cancel</button>
+                <button class="btn btn-primary" id="confirm-mint-btn">Initiate Minting</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Execution Progress -->
+    <div id="progress-modal" class="modal">
+        <div class="modal-content glass" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3><span class="pulse-icon"></span> Blockchain Execution Live</h3>
+                <button class="modal-close" onclick="closeProgressModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="execution-steps" class="execution-timeline">
+                    <!-- Steps will be injected here -->
+                    <div class="loading">Initiating secure handover...</div>
+                </div>
+            </div>
+            <div class="modal-footer" style="justify-content: center;">
+                <button class="btn btn-secondary" id="close-progress-btn" onclick="closeProgressModal()"
+                    disabled>Waiting for Terminal State...</button>
             </div>
         </div>
     </div>

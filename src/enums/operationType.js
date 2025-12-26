@@ -7,7 +7,8 @@ export const OperationType = Object.freeze({
     MINT: 'MINT',
     TRANSFER: 'TRANSFER',
     BURN: 'BURN',
-    UPDATE_VAULT: 'UPDATE_VAULT'
+    UPDATE_VAULT: 'UPDATE_VAULT',
+    LINK_ASSET: 'LINK_ASSET'
 });
 
 export const isValidOperationType = (type) => {

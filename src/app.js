@@ -17,7 +17,17 @@ import routes from './routes/index.js';
 const app = express();
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+            "script-src": ["'self'", "'unsafe-inline'"],
+            "script-src-attr": ["'unsafe-inline'"],
+            "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            "font-src": ["'self'", "https://fonts.gstatic.com"],
+        },
+    },
+}));
 
 // CORS configuration
 app.use(cors({

@@ -16,7 +16,7 @@ import logger from '../../utils/logger.js';
 export const linkAssetWithMetadata = async (assetId, metadata, actor, context = {}) => {
     // Validate asset type
     if (!isValidAssetType(metadata.assetType)) {
-        throw new BadRequestError(`Invalid asset type: ${metadata.assetType}`);
+        throw BadRequestError(`Invalid asset type: ${metadata.assetType}`);
     }
 
     // Link asset to custody first
@@ -47,7 +47,7 @@ export const getAssetDetails = async (assetId) => {
     const asset = await assetRepository.findByAssetId(assetId);
 
     if (!asset) {
-        throw new NotFoundError(`Asset ${assetId} not found`);
+        throw NotFoundError(`Asset ${assetId} not found`);
     }
 
     return {
@@ -73,7 +73,7 @@ export const updateAssetInfo = async (assetId, updates, actor, context = {}) => 
     const asset = await assetRepository.findByAssetId(assetId);
 
     if (!asset || !asset.assetMetadata) {
-        throw new NotFoundError(`Asset ${assetId} not found or has no metadata`);
+        throw NotFoundError(`Asset ${assetId} not found or has no metadata`);
     }
 
     const updated = await assetRepository.updateAssetMetadata(
@@ -104,7 +104,7 @@ export const verifyAsset = async (assetId, verifier, notes, context = {}) => {
     const asset = await assetRepository.findByAssetId(assetId);
 
     if (!asset || !asset.assetMetadata) {
-        throw new NotFoundError(`Asset ${assetId} not found or has no metadata`);
+        throw NotFoundError(`Asset ${assetId} not found or has no metadata`);
     }
 
     const verified = await assetRepository.verifyAsset(
@@ -142,7 +142,7 @@ export const searchAssets = async (criteria) => {
  */
 export const getAssetsByType = async (assetType, options = {}) => {
     if (!isValidAssetType(assetType)) {
-        throw new BadRequestError(`Invalid asset type: ${assetType}`);
+        throw BadRequestError(`Invalid asset type: ${assetType}`);
     }
 
     return await assetRepository.getAssetsByType(assetType, options);

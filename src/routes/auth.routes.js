@@ -91,7 +91,7 @@ router.get('/keys/:id', requirePermission('admin'), async (req, res, next) => {
 
         const apiKey = await apiKeyRepository.findById(id);
         if (!apiKey) {
-            throw new NotFoundError('API key not found');
+            throw NotFoundError('API key not found');
         }
 
         res.json({
@@ -121,7 +121,7 @@ router.patch('/keys/:id', requirePermission('admin'), async (req, res, next) => 
         // Check if key exists
         const existing = await apiKeyRepository.findById(id);
         if (!existing) {
-            throw new NotFoundError('API key not found');
+            throw NotFoundError('API key not found');
         }
 
         // Validate permissions if provided
@@ -157,7 +157,7 @@ router.delete('/keys/:id', requirePermission('admin'), async (req, res, next) =>
         // Check if key exists
         const existing = await apiKeyRepository.findById(id);
         if (!existing) {
-            throw new NotFoundError('API key not found');
+            throw NotFoundError('API key not found');
         }
 
         await apiKeyRepository.revokeApiKey(id);

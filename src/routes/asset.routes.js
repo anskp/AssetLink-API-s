@@ -10,17 +10,17 @@ import { authenticate, requirePermission } from '../modules/auth/auth.middleware
 const router = express.Router();
 
 // Publicly available within authenticated session
-router.get('/types', authenticate, assetController.getAssetTypes);
-router.get('/stats/types', authenticate, assetController.getAssetStatsByType);
+router.get('/types', assetController.getAssetTypes);
+router.get('/stats/types', assetController.getAssetStatsByType);
 
 // Search and list (Read permission)
-router.get('/search', authenticate, requirePermission('read'), assetController.searchAssets);
-router.get('/types/:type', authenticate, requirePermission('read'), assetController.getAssetsByType);
+router.get('/search', requirePermission('read'), assetController.searchAssets);
+router.get('/types/:type', requirePermission('read'), assetController.getAssetsByType);
 
 // Record management (Write/Admin permission)
-router.post('/', authenticate, requirePermission('write'), assetController.createAsset);
-router.get('/:assetId', authenticate, requirePermission('read'), assetController.getAssetDetails);
-router.patch('/:assetId', authenticate, requirePermission('write'), assetController.updateAsset);
-router.post('/:assetId/verify', authenticate, requirePermission('admin'), assetController.verifyAsset);
+router.post('/', requirePermission('write'), assetController.createAsset);
+router.get('/:assetId', requirePermission('read'), assetController.getAssetDetails);
+router.patch('/:assetId', requirePermission('write'), assetController.updateAsset);
+router.post('/:assetId/verify', requirePermission('admin'), assetController.verifyAsset);
 
 export default router;

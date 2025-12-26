@@ -36,11 +36,12 @@ export const config = {
     apiKeySecret: process.env.API_KEY_SECRET || 'default-secret-change-in-production',
     hmacSecret: process.env.HMAC_SECRET || 'default-hmac-secret-change-in-production',
 
-    // Fireblocks (optional for Sprint 0)
+    // Fireblocks
     fireblocks: {
         apiKey: process.env.FIREBLOCKS_API_KEY || '',
-        privateKeyPath: process.env.FIREBLOCKS_PRIVATE_KEY_PATH || '',
-        baseUrl: process.env.FIREBLOCKS_BASE_URL || 'https://api.fireblocks.io'
+        secretKeyPath: process.env.FIREBLOCKS_SECRET_KEY_PATH || '', // Changed from privateKeyPath
+        baseUrl: process.env.FIREBLOCKS_BASE_URL || 'https://sandbox-api.fireblocks.io/v1',
+        contractTemplateId: process.env.FIREBLOCKS_CONTRACT_TEMPLATE_ID || ''
     },
 
     // Rate Limiting

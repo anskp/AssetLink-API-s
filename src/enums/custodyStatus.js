@@ -5,6 +5,7 @@
 
 export const CustodyStatus = Object.freeze({
     UNLINKED: 'UNLINKED',     // Asset not yet registered
+    PENDING: 'PENDING',       // Awaiting checker approval for linking
     LINKED: 'LINKED',         // Asset registered, awaiting mint
     MINTED: 'MINTED',         // Token minted and in custody vault
     WITHDRAWN: 'WITHDRAWN',   // Token transferred to external wallet
@@ -17,7 +18,8 @@ export const isValidCustodyStatus = (status) => {
 
 export const canTransitionTo = (currentStatus, newStatus) => {
     const validTransitions = {
-        [CustodyStatus.UNLINKED]: [CustodyStatus.LINKED],
+        [CustodyStatus.UNLINKED]: [CustodyStatus.PENDING],
+        [CustodyStatus.PENDING]: [CustodyStatus.LINKED],
         [CustodyStatus.LINKED]: [CustodyStatus.MINTED],
         [CustodyStatus.MINTED]: [CustodyStatus.WITHDRAWN, CustodyStatus.BURNED],
         [CustodyStatus.WITHDRAWN]: [],
