@@ -1,0 +1,179 @@
+openapi: 3.0.3
+info:
+  title: AssetLink Custody API
+  description: |
+    Secure Custody Infrastructure for Tokenized Real-World Assets (RWAs)
+    
+    AssetLink Custody is a custody-only backend system designed to securely manage 
+    blockchain tokens that represent verified real-world assets.
+    
+    ## Authentication
+    All API requests require HMAC-SHA256 signature authentication.
+    
+    Required headers:
+    - `X-API-KEY`: Your public API key
+    - `X-SIGNATURE`: HMAC-SHA256 signature
+    - `X-TIMESTAMP`: Unix timestamp
+    
+    Signature payload: `METHOD + PATH + TIMESTAMP + BODY`
+    
+  version: 1.0.0
+  contact:
+    name: AssetLink Support
+    email: support@assetlink.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:3000/v1
+    description: Development server
+  - url: https://api.assetlink.com/v1
+    description: Production server
+
+tags:
+  - name: Health
+    description: System health and status
+  - name: Assets
+    description: Asset linking and custody management
+  - name: Tokens
+    description: Token minting, burning, and lifecycle
+  - name: Vaults
+    description: Fireblocks vault management
+  - name: Operations
+    description: Maker-checker workflow operations
+  - name: Transfers
+    description: Token withdrawal and transfers
+  - name: Audit
+    description: Audit trail and compliance
+
+security:
+  - HmacAuth: []
+
+components:
+  securitySchemes:
+    HmacAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+      description: |
+        HMAC-SHA256 signature authentication
+        
+        Required headers:
+        - X-API-KEY: Public API key
+        - X-SIGNATURE: HMAC signature
+        - X-TIMESTAMP: Unix timestamp
+  
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+            statusCode:
+              type: integer
+            details:
+              type: object
+            timestamp:
+              type: string
+              format: date-time
+    
+    CustodyStatus:
+      type: string
+      enum:
+        - UNLINKED
+        - LINKED
+        - MINTED
+        - WITHDRAWN
+        - BURNED
+    
+    OperationStatus:
+      type: string
+      enum:
+        - PENDING_MAKER
+        - PENDING_CHECKER
+        - APPROVED
+        - EXECUTED
+        - REJECTED
+        - FAILED
+    
+    CustodyRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        assetId:
+          type: string
+        status:
+          $ref: '#/components/schemas/CustodyStatus'
+        blockchain:
+          type: string
+        tokenStandard:
+          type: string
+        tokenAddress:
+          type: string
+        tokenId:
+          type: string
+        quantity:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check if the service is running
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+                  service:
+                    type: string
+                  version:
+                    type: string
+  
+  /:
+    get:
+      tags:
+        - Health
+      summary: API information
+      description: Get API version and available endpoints
+      security: []
+      responses:
+        '200':
+          description: API information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                  version:
+                    type: string
+                  description:
+                    type: string
+                  endpoints:
+                    type: object
+                  documentation:
+                    type: string

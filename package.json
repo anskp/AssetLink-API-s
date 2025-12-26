@@ -1,15 +1,35 @@
 {
-  "name": "assetlink",
+  "name": "assetlink-custody",
   "version": "1.0.0",
-  "description": "",
+  "description": "Secure Custody Infrastructure for Tokenized Real-World Assets (RWAs)",
   "license": "ISC",
   "author": "Copym, Anas kp",
   "type": "module",
-  "main": "index.js",
+  "main": "src/server.js",
+  "prisma": {
+    "schema": "src/prisma/schema.prisma"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "@prisma/client": "^6.2.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "decimal.js": "^10.4.3",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.2.0"
   }
 }

@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AssetLink Custody Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h1>🔐 AssetLink</h1>
+                <p>Custody Dashboard</p>
+            </div>
+            <div class="role-selector">
+                <label for="role-select">Acting as:</label>
+                <select id="role-select" class="select select-sm">
+                    <option value="issuer">Issuer</option>
+                    <option value="investor">Investor</option>
+                    <option value="checker">Checker (Admin)</option>
+                </select>
+            </div>
+            <nav class="nav">
+                <a href="#" class="nav-item active" data-view="overview">
+                    <span class="icon">📊</span>
+                    <span>Overview</span>
+                </a>
+                <a href="#" class="nav-item" data-view="custody">
+                    <span class="icon">🏦</span>
+                    <span>Custody Records</span>
+                </a>
+                <!-- Role Specific Items -->
+                <div id="issuer-controls">
+                    <a href="#" class="nav-item" data-view="asset-linking">
+                        <span class="icon">🔗</span>
+                        <span>Link Asset</span>
+                    </a>
+                </div>
+                <div id="investor-controls" style="display: none;">
+                    <a href="#" class="nav-item" data-view="marketplace">
+                        <span class="icon">🛒</span>
+                        <span>Marketplace</span>
+                    </a>
+                </div>
+                <div id="checker-controls" style="display: none;">
+                    <a href="#" class="nav-item" data-view="approvals">
+                        <span class="icon">⚖️</span>
+                        <span>Pending Approvals</span>
+                    </a>
+                </div>
+
+                <a href="#" class="nav-item" data-view="audit">
+                    <span class="icon">📝</span>
+                    <span>Audit Trail</span>
+                </a>
+                <a href="#" class="nav-item" data-view="api-keys">
+                    <span class="icon">🔑</span>
+                    <span>API Keys</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status">
+                    <span class="status-dot"></span>
+                    <span>System Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <h2 id="page-title">Overview</h2>
+                </div>
+                <div class="header-right">
+                    <button class="btn btn-primary" id="link-asset-btn">
+                        <span>+ Link Asset</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Overview View -->
+            <div id="overview-view" class="view active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">🏦</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Total Assets</div>
+                            <div class="stat-value" id="stat-total">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🔗</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Linked</div>
+                            <div class="stat-value" id="stat-linked">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🪙</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Minted</div>
+                            <div class="stat-value" id="stat-minted">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📤</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Withdrawn</div>
+                            <div class="stat-value" id="stat-withdrawn">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Recent Activity</h3>
+                    <div class="activity-list" id="recent-activity">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custody Records View -->
+            <div id="custody-view" class="view">
+                <div class="section">
+                    <div class="section-header">
+                        <h3>Custody Records</h3>
+                        <div class="filters">
+                            <input type="text" id="asset-search" class="input" placeholder="Search by Asset ID...">
+                            <select id="type-filter" class="select">
+                                <option value="">All Types</option>
+                                <option value="WATCH">Watch</option>
+                                <option value="JEWELRY">Jewelry</option>
+                                <option value="ART">Art</option>
+                                <option value="REAL_ESTATE">Real Estate</option>
+                            </select>
+                            <select id="status-filter" class="select">
+                                <option value="">All Statuses</option>
+                                <option value="LINKED">Linked</option>
+                                <option value="MINTED">Minted</option>
+                                <option value="WITHDRAWN">Withdrawn</option>
+                                <option value="BURNED">Burned</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Asset ID</th>
+                                    <th>Status</th>
+                                    <th>Blockchain</th>
+                                    <th>Token ID</th>
+                                    <th>Linked At</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="custody-table-body">
+                                <tr>
+                                    <td colspan="6" class="loading">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audit Trail View -->
+            <div id="audit-view" class="view">
+                <div class="section">
+                    <h3>Audit Trail</h3>
+                    <div class="audit-list" id="audit-list">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Marketplace View -->
+            <div id="marketplace-view" class="view">
+                <div class="section">
+                    <div class="section-header">
+                        <h3>Token Marketplace</h3>
+                    </div>
+                    <div class="marketplace-grid" id="marketplace-list">
+                        <div class="loading">Loading marketplace...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Approvals View -->
+            <div id="approvals-view" class="view">
+                <div class="section">
+                    <div class="section-header">
+                        <h3>Approval Queue</h3>
+                    </div>
+                    <div class="approval-list" id="approval-queue">
+                        <div class="loading">No pending approvals</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Keys View -->
+            <div id="api-keys-view" class="view">
+                <div class="section">
+                    <div class="section-header">
+                        <h3>API Keys</h3>
+                        <button class="btn btn-primary" id="generate-key-btn">
+                            <span>+ Generate Key</span>
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Public Key</th>
+                                    <th>Permissions</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="api-keys-table-body">
+                                <tr>
+                                    <td colspan="5" class="loading">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Link Asset -->
+    <div id="link-asset-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Link Asset to Custody</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="asset-id-input">Asset ID</label>
+                    <input type="text" id="asset-id-input" class="input" placeholder="e.g., ROLEX-2025-SN-9981">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="asset-type-input">Asset Type</label>
+                        <select id="asset-type-input" class="select">
+                            <option value="WATCH">Watch</option>
+                            <option value="JEWELRY">Jewelry</option>
+                            <option value="ART">Art</option>
+                            <option value="REAL_ESTATE">Real Estate</option>
+                            <option value="COLLECTIBLE">Collectible</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="asset-name-input">Asset Name</label>
+                    <input type="text" id="asset-name-input" class="input" placeholder="e.g., Rolex Submariner">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="asset-value-input">Estimated Value</label>
+                        <input type="number" id="asset-value-input" class="input" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="asset-currency-input">Currency</label>
+                        <select id="asset-currency-input" class="select">
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                            <option value="GBP">GBP</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="asset-desc-input">Description</label>
+                    <textarea id="asset-desc-input" class="input" rows="3"
+                        placeholder="Additional details..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-link-btn">Cancel</button>
+                <button class="btn btn-primary" id="confirm-link-btn">Link Asset</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

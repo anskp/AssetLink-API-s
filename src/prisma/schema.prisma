@@ -1,0 +1,193 @@
+// This is your Prisma schema file for AssetLink Custody
+// Database: MySQL
+// Core tables: CustodyRecord, CustodyOperation, AuditLog, ApiKey, VaultWallet
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// API Authentication
+model ApiKey {
+  id            String   @id @default(uuid())
+  publicKey     String   @unique
+  secretKeyHash String   // HMAC secret (hashed)
+  tenantId      String?
+  permissions   Json     // Scoped permissions array
+  ipWhitelist   Json?    // Optional IP restrictions
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([publicKey])
+  @@map("api_keys")
+}
+
+// Fireblocks Vault Metadata
+model VaultWallet {
+  id              String   @id @default(uuid())
+  fireblocksId    String   @unique
+  blockchain      String   // ETH, MATIC, etc.
+  vaultType       String   // CUSTODY, SETTLEMENT
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  custodyRecords  CustodyRecord[]
+  operations      CustodyOperation[]
+
+  @@index([fireblocksId])
+  @@map("vault_wallets")
+}
+
+// Core Custody Record (Asset-to-Token Immutable Mapping)
+model CustodyRecord {
+  id                String   @id @default(uuid())
+  assetId           String   @unique // External asset identifier (immutable)
+  status            String   // UNLINKED, LINKED, MINTED, WITHDRAWN, BURNED
+  
+  // Token metadata (populated after minting)
+  blockchain        String?
+  tokenStandard     String?  // ERC721, ERC1155
+  tokenAddress      String?
+  tokenId           String?
+  quantity          String?  // Decimal string for precision
+  
+  // Vault reference
+  vaultWalletId     String?
+  vaultWallet       VaultWallet? @relation(fields: [vaultWalletId], references: [id])
+  
+  // Timestamps
+  linkedAt          DateTime?
+  mintedAt          DateTime?
+  withdrawnAt       DateTime?
+  burnedAt          DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  operations        CustodyOperation[]
+  auditLogs         AuditLog[]
+  assetMetadata     AssetMetadata?
+
+  @@index([assetId])
+  @@index([status])
+  @@index([tokenAddress, tokenId])
+  @@map("custody_records")
+}
+
+// Asset Metadata (Detailed Asset Information)
+model AssetMetadata {
+  id                String   @id @default(uuid())
+  custodyRecordId   String   @unique
+  custodyRecord     CustodyRecord @relation(fields: [custodyRecordId], references: [id])
+  
+  // Asset Information
+  assetType         String   // WATCH, JEWELRY, ART, REAL_ESTATE, etc.
+  assetName         String
+  description       String?  @db.Text
+  manufacturer      String?
+  model             String?
+  serialNumber      String?
+  yearManufactured  Int?
+  
+  // Valuation
+  estimatedValue    String   // Decimal string for precision
+  currency          String   @default("USD")
+  valuationDate     DateTime?
+  valuationMethod   String?
+  
+  // Verification
+  verifiedBy        String?
+  verificationDate  DateTime?
+  verificationNotes String?  @db.Text
+  
+  // Documents and Images
+  documents         Json     // Array of document references
+  images            Json     // Array of image URLs
+  
+  // Custom metadata
+  customFields      Json?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([assetType])
+  @@index([custodyRecordId])
+  @@map("asset_metadata")
+}
+
+// Maker-Checker Operations
+model CustodyOperation {
+  id                  String   @id @default(uuid())
+  operationType       String   // MINT, TRANSFER, BURN
+  status              String   // PENDING_MAKER, PENDING_CHECKER, APPROVED, EXECUTED, REJECTED, FAILED
+  
+  // References
+  custodyRecordId     String
+  custodyRecord       CustodyRecord @relation(fields: [custodyRecordId], references: [id])
+  
+  vaultWalletId       String?
+  vaultWallet         VaultWallet? @relation(fields: [vaultWalletId], references: [id])
+  
+  // Operation payload
+  payload             Json     // Operation-specific data
+  
+  // Approval tracking
+  initiatedBy         String   // Maker user ID
+  approvedBy          String?  // Checker user ID
+  rejectedBy          String?
+  rejectionReason     String?  @db.Text
+  
+  // Execution tracking
+  fireblocksTaskId    String?  @unique
+  txHash              String?
+  executedAt          DateTime?
+  failureReason       String?  @db.Text
+  
+  // Idempotency
+  idempotencyKey      String?  @unique
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  auditLogs           AuditLog[]
+
+  @@index([custodyRecordId])
+  @@index([status])
+  @@index([operationType])
+  @@index([fireblocksTaskId])
+  @@map("custody_operations")
+}
+
+// Append-Only Audit Trail
+model AuditLog {
+  id                  String   @id @default(uuid())
+  
+  // References
+  custodyRecordId     String?
+  custodyRecord       CustodyRecord? @relation(fields: [custodyRecordId], references: [id])
+  
+  operationId         String?
+  operation           CustodyOperation? @relation(fields: [operationId], references: [id])
+  
+  // Event details
+  eventType           String   // ASSET_LINKED, TOKEN_MINTED, TRANSFER_EXECUTED, etc.
+  actor               String   // User/system that triggered the event
+  metadata            Json     // Event-specific data
+  ipAddress           String?
+  userAgent           String?  @db.Text
+  
+  // Timestamp (immutable)
+  timestamp           DateTime @default(now())
+
+  @@index([custodyRecordId])
+  @@index([operationId])
+  @@index([eventType])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
