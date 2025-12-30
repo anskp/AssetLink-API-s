@@ -61,12 +61,14 @@ export const updateStatus = async (id, newStatus, metadata = {}) => {
         if (metadata.tokenAddress) updateData.tokenAddress = metadata.tokenAddress;
         if (metadata.tokenId) updateData.tokenId = metadata.tokenId;
         if (metadata.quantity) updateData.quantity = metadata.quantity;
-        if (metadata.vaultWalletId) updateData.vaultWalletId = metadata.vaultWalletId;
     } else if (newStatus === CustodyStatus.WITHDRAWN) {
         updateData.withdrawnAt = new Date();
     } else if (newStatus === CustodyStatus.BURNED) {
         updateData.burnedAt = new Date();
     }
+
+    // Update vaultWalletId regardless of status if provided in metadata
+    if (metadata.vaultWalletId) updateData.vaultWalletId = metadata.vaultWalletId;
 
     return await prisma.custodyRecord.update({
         where: { id },

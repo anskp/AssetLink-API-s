@@ -3,6 +3,7 @@ import * as custodyRepository from '../custody/custody.repository.js';
 import * as auditService from '../audit/audit.service.js';
 import * as custodyService from '../custody/custody.service.js';
 import * as fireblocksService from '../vault/fireblocks.service.js';
+import * as mintService from '../token-lifecycle/mint.service.js';
 import * as assetService from '../asset-linking/asset.service.js';
 import * as assetRepository from '../asset-linking/asset.repository.js';
 import { OperationStatus, canTransitionTo } from '../../enums/operationStatus.js';
@@ -10,6 +11,7 @@ import { OperationType } from '../../enums/operationType.js';
 import { CustodyStatus } from '../../enums/custodyStatus.js';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors/ApiError.js';
 import logger from '../../utils/logger.js';
+import prisma from '../../config/db.js';
 
 /**
  * Operation Service
@@ -226,14 +228,32 @@ export const executeOperation = async (operationId, actor, context = {}) => {
 
         // Perform real Fireblocks execution
         if (operation.operationType === OperationType.MINT) {
-            const { name, symbol, decimals, totalSupply, blockchainId } = operation.payload;
-            const result = await fireblocksService.issueToken(operation.vaultWalletId || 'default', {
-                name: name || 'AssetToken',
-                symbol: symbol || 'ATKN',
-                decimals: decimals || 18,
-                totalSupply: totalSupply || '1',
-                blockchainId: blockchainId || 'ETH_TEST5'
+            // Get the custody record to get the assetId
+            const custodyRecord = await custodyService.getCustodyRecordById(operation.custodyRecordId);
+
+            // Map the vault ID to a numeric ID for Fireblocks (in sandbox mode)
+            // In a real system, this would be a proper mapping from UUID to Fireblocks numeric ID
+            const vaultWalletId = operation.vaultWalletId || operation.payload.vaultWalletId || '88';
+            // If it's a UUID format, default to '88' for sandbox (standard gas vault)
+            const numericVaultId = /^[0-9]+$/.test(vaultWalletId) ? vaultWalletId : '88';
+
+            const mintData = {
+                assetId: operation.payload.assetId || custodyRecord?.assetId,
+                tokenSymbol: operation.payload.tokenSymbol || operation.payload.symbol,
+                tokenName: operation.payload.tokenName || operation.payload.name,
+                totalSupply: operation.payload.totalSupply,
+                decimals: operation.payload.decimals,
+                blockchainId: operation.payload.blockchainId,
+                vaultWalletId: numericVaultId
+            };
+
+            console.log('DEBUG: About to call mint service with:', mintData);
+
+            const result = await mintService.mintToken(mintData, 'SYSTEM', {
+                operationId: operationId,
+                custodyRecordId: operation.custodyRecordId
             });
+
             fireblocksTaskId = result.tokenLinkId;
         } else if (operation.operationType === OperationType.TRANSFER) {
             const { fromVaultId, toVaultId, assetId, amount } = operation.payload;
@@ -246,11 +266,29 @@ export const executeOperation = async (operationId, actor, context = {}) => {
         } else if (operation.operationType === OperationType.LINK_ASSET) {
             const { assetId, ...metadata } = operation.payload;
 
+            // Create a new vault for this specific asset during asset link approval
+            const vaultName = `${assetId.replace(/[^a-zA-Z0-9]/g, '_')}_VAULT_${Date.now()}`;
+            const vaultResult = await fireblocksService.createUserVault(vaultName, operation.custodyRecordId);
+            const fireblocksVaultId = vaultResult.vaultId;
+
+            // Create a VaultWallet record in the database to track this vault
+            const vaultWalletRecord = await prisma.vaultWallet.create({
+                data: {
+                    fireblocksId: fireblocksVaultId,
+                    blockchain: 'ETH_TEST5', // Default blockchain, could be configurable
+                    vaultType: 'CUSTODY',
+                    isActive: true
+                }
+            });
+
             // 1. Update custody status from PENDING to LINKED
             await custodyService.updateCustodyStatus(
                 operation.custodyRecordId,
                 CustodyStatus.LINKED,
-                { linkedAt: new Date() },
+                {
+                    linkedAt: new Date(),
+                    vaultWalletId: vaultWalletRecord.id  // Store the database vault wallet ID, not the Fireblocks ID
+                },
                 'SYSTEM_GOVERNANCE',
                 { operationId }
             );
@@ -325,16 +363,11 @@ const monitorExecution = async (operationId, taskId, type) => {
 
                 // Finalize Custody Record status
                 if (type === OperationType.MINT) {
-                    await custodyService.updateCustodyStatus(
-                        operation.custodyRecordId,
-                        CustodyStatus.MINTED,
-                        {
-                            blockchain: 'ETH_TEST5',
-                            tokenId: data.tokenMetadata?.contractAddress || 'ISSUED',
-                            txHash
-                        },
-                        'SYSTEM'
-                    );
+                    // The mint service handles updating custody status, so we just update operation status
+                    await operationRepository.updateStatus(operationId, OperationStatus.EXECUTED, {
+                        txHash,
+                        completedAt: new Date()
+                    });
                 } else if (type === OperationType.BURN) {
                     await custodyService.updateCustodyStatus(
                         operation.custodyRecordId,
@@ -342,9 +375,10 @@ const monitorExecution = async (operationId, taskId, type) => {
                         { txHash },
                         'SYSTEM'
                     );
+                    await operationRepository.updateStatus(operationId, OperationStatus.EXECUTED, { txHash });
+                } else {
+                    await operationRepository.updateStatus(operationId, OperationStatus.EXECUTED, { txHash });
                 }
-
-                await operationRepository.updateStatus(operationId, OperationStatus.EXECUTED, { txHash });
                 return;
             }
 

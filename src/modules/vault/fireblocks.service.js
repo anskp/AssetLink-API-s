@@ -11,15 +11,25 @@ import logger from '../../utils/logger.js';
  */
 
 const shouldSimulate = () => {
-    const isProd = config.nodeEnv === 'production';
-    if (isProd) return false;
+    // Check if Fireblocks is properly configured with valid credentials
+    const { apiKey, secretKeyPath } = config.fireblocks;
 
-    const client = getFireblocksClient();
-    if (!client) {
+    if (!apiKey || !secretKeyPath || apiKey.trim() === '' || secretKeyPath.trim() === '') {
         return true;
     }
 
-    return true; // Default to simulation in non-prod for smooth UI testing
+    // Check if the secret key file exists
+    try {
+        if (!fs.existsSync(secretKeyPath)) {
+            return true;
+        }
+    } catch (error) {
+        return true;
+    }
+
+    // Try to initialize Fireblocks client to verify configuration
+    const client = getFireblocksClient();
+    return !client;
 };
 
 /**
@@ -121,14 +131,16 @@ export const createUserVault = async (userName, userId) => {
     const vaultName = `USER_${userName}_${userId}_${Date.now()}`;
 
     try {
-        const response = await fireblocks.vaults.createVaultAccount({
-            createVaultAccountRequest: {
-                name: vaultName,
-                hiddenOnUI: false,
-                autoFuel: true,
-                customerRefId: String(userId)
-            }
-        });
+        // Use manual HTTPS request to avoid authentication issues with SDK
+        const payload = {
+            name: vaultName,
+            hiddenOnUI: false,
+            autoFuel: true,
+            customerRefId: String(userId)
+        };
+
+        logger.info('Creating vault account via manual API...', { vaultName });
+        const response = await fireblocksRequest('/v1/vault/accounts', 'POST', payload);
 
         logger.info('Vault account created', { vaultId: response.data.id, vaultName: response.data.name });
 
@@ -157,13 +169,10 @@ export const getWalletAddress = async (vaultId, assetId = 'ETH_TEST5') => {
 
     try {
         // Try to get existing address
-        const addresses = await fireblocks.vaults.getVaultAccountAssetAddressesPaginated({
-            vaultAccountId: vaultId,
-            assetId: assetId
-        });
+        const addressesResponse = await fireblocksRequest(`/v1/vault/accounts/${vaultId}/assets/${assetId}/addresses`, 'GET', null);
 
-        if (addresses.data.addresses?.length > 0) {
-            return addresses.data.addresses[0].address;
+        if (addressesResponse.data.addresses?.length > 0) {
+            return addressesResponse.data.addresses[0].address;
         }
     } catch (e) {
         // Address doesn't exist, proceed to create asset
@@ -172,24 +181,17 @@ export const getWalletAddress = async (vaultId, assetId = 'ETH_TEST5') => {
 
     // Create asset in vault
     try {
-        await fireblocks.vaults.createVaultAccountAsset({
-            vaultAccountId: vaultId,
-            assetId: assetId
-        });
+        await fireblocksRequest(`/v1/vault/accounts/${vaultId}/assets`, 'POST', { assetId });
     } catch (e) {
         // Asset might already exist
     }
 
     // Create deposit address
-    const addr = await fireblocks.vaults.createVaultAccountDepositAddress({
-        vaultAccountId: vaultId,
-        assetId: assetId,
-        createDepositAddressRequest: {
-            description: 'Primary address'
-        }
+    const addrResponse = await fireblocksRequest(`/v1/vault/accounts/${vaultId}/assets/${assetId}/addresses`, 'POST', {
+        description: 'Primary address'
     });
 
-    const address = addr.data.address || addr.data.legacyAddress;
+    const address = addrResponse.data.address || addrResponse.data.legacyAddress;
     logger.info('Wallet address generated', { vaultId, assetId, address });
 
     return address;
@@ -275,9 +277,9 @@ export const transferTokens = async (fromVaultId, toVaultId, assetId, amount) =>
     };
 
     try {
-        const result = await fireblocks.transactions.createTransaction({
-            transactionRequest: transferRequest
-        });
+        // Use manual HTTPS request to avoid authentication issues with SDK
+        logger.info('Creating transfer via manual API...', { fromVaultId, toVaultId, assetId });
+        const result = await fireblocksRequest('/v1/transactions', 'POST', transferRequest);
 
         logger.info('Transfer initiated', { txId: result.data.id });
         return result.data.id;
@@ -308,8 +310,9 @@ export const monitorStatus = async (id, type = 'TRANSACTION') => {
             const link = await fireblocks.tokenization.getLinkedToken({ id });
             return link.data;
         } else {
-            const tx = await fireblocks.transactions.getTransaction({ txId: id });
-            return tx.data;
+            // Use manual HTTPS request for transaction monitoring
+            const txResponse = await fireblocksRequest(`/v1/transactions/${id}`, 'GET', null);
+            return txResponse.data;
         }
     } catch (error) {
         logger.error('Monitoring failed', { id, type, error: error.message });

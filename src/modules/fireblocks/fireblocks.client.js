@@ -216,7 +216,7 @@ export const getVaultDetails = async (vaultId) => {
       wallets: []
     };
   }
-  
+
   const fireblocks = getFireblocksClient();
   if (!fireblocks) {
     logger.warn('SIMULATION: Returning mock vault details (Fireblocks SDK not initialized)');
@@ -226,30 +226,26 @@ export const getVaultDetails = async (vaultId) => {
       wallets: []
     };
   }
-  
+
   try {
+    // Use manual HTTPS request to avoid authentication issues with SDK
     const vaultResponse = await withRetry(async () => {
-      return await fireblocks.vaults.getVaultAccountById({
-        vaultAccountId: vaultId
-      });
+      return await fireblocksRequest(`/v1/vault/accounts/${vaultId}`, 'GET', null);
     });
-    
+
     const vault = vaultResponse.data;
     const wallets = [];
-    
+
     // Get all assets in the vault
     if (vault.assets && vault.assets.length > 0) {
       for (const asset of vault.assets) {
         try {
-          const addresses = await fireblocks.vaults.getVaultAccountAssetAddressesPaginated({
-            vaultAccountId: vaultId,
-            assetId: asset.id
-          });
-          
-          if (addresses.data.addresses?.length > 0) {
+          const addressesResponse = await fireblocksRequest(`/v1/vault/accounts/${vaultId}/assets/${asset.id}/addresses`, 'GET', null);
+
+          if (addressesResponse.data.addresses?.length > 0) {
             wallets.push({
               blockchain: asset.id,
-              address: addresses.data.addresses[0].address,
+              address: addressesResponse.data.addresses[0].address,
               balance: asset.total || '0'
             });
           }
@@ -262,7 +258,7 @@ export const getVaultDetails = async (vaultId) => {
         }
       }
     }
-    
+
     return {
       id: vault.id,
       name: vault.name,
@@ -278,6 +274,88 @@ export const getVaultDetails = async (vaultId) => {
 };
 
 /**
+ * Manual HTTPS request to Fireblocks
+ */
+async function fireblocksRequest(path, method, payload) {
+  const fs = await import('fs');
+  const crypto = await import('crypto');
+
+  const { apiKey, secretKeyPath, baseUrl } = config.fireblocks;
+  const secretKey = fs.readFileSync(secretKeyPath, 'utf8');
+
+  // For GET requests, payload is null, so we use an empty string for bodyHash
+  const data = payload ? JSON.stringify(payload) : '';
+  const token = {
+    uri: path,
+    nonce: crypto.randomBytes(16).toString('hex'),
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 55,
+    sub: apiKey,
+    bodyHash: payload ? crypto.createHash('sha256').update(data).digest('hex') : crypto.createHash('sha256').update('').digest('hex')
+  };
+
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const encodedPayload = Buffer.from(JSON.stringify(token)).toString('base64url');
+  const signature = crypto.sign('RSA-SHA256', Buffer.from(`${encodedHeader}.${encodedPayload}`), {
+    key: secretKey,
+    padding: crypto.constants.RSA_PKCS1_PADDING
+  }).toString('base64url');
+
+  const jwt = `${encodedHeader}.${encodedPayload}.${signature}`;
+  const url = new URL(baseUrl);
+  const hostname = url.hostname;
+
+  const https = await import('https');
+
+  const options = {
+    hostname,
+    path,
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+      'Authorization': `Bearer ${jwt}`
+    }
+  };
+
+  // Only add Content-Length and body for non-GET methods
+  if (method !== 'GET') {
+    options.headers['Content-Length'] = data.length;
+  }
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let responseData = '';
+      res.on('data', (chunk) => { responseData += chunk; });
+      res.on('end', () => {
+        try {
+          const parsedData = JSON.parse(responseData);
+          if (res.statusCode >= 400) {
+            reject(new Error(parsedData.message || `Fireblocks API Error: ${res.statusCode}`));
+          } else {
+            resolve({ data: parsedData, statusCode: res.statusCode });
+          }
+        } catch (e) {
+          resolve({ data: responseData, statusCode: res.statusCode });
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      logger.error('HTTPS Request Error', { error: error.message });
+      reject(error);
+    });
+
+    // Only write body for non-GET methods
+    if (method !== 'GET') {
+      req.write(data);
+    }
+    req.end();
+  });
+}
+
+/**
  * Issue a new token (mint)
  */
 export const issueToken = async (vaultId, tokenConfig) => {
@@ -289,7 +367,7 @@ export const issueToken = async (vaultId, tokenConfig) => {
       status: 'COMPLETED'
     };
   }
-  
+
   const fireblocks = getFireblocksClient();
   if (!fireblocks) {
     logger.warn('SIMULATION: Issuing mock token (Fireblocks SDK not initialized)');
@@ -298,47 +376,134 @@ export const issueToken = async (vaultId, tokenConfig) => {
       status: 'COMPLETED'
     };
   }
-  
-  const { name, symbol, decimals, totalSupply, blockchainId } = tokenConfig;
-  
+
+  const { name, symbol, decimals, totalSupply, blockchainId, contractId } = tokenConfig;
+
   try {
     // Convert total supply to wei (smallest unit)
     const decimalsInt = parseInt(decimals) || 18;
     const totalSupplyWei = (BigInt(totalSupply) * BigInt(10 ** decimalsInt)).toString();
-    
-    const response = await withRetry(async () => {
-      return await fireblocks.tokenization.createNewToken({
-        createTokenRequest: {
-          blockchainId: blockchainId,
-          vaultAccountId: vaultId,
-          createParams: {
-            name,
-            symbol,
-            decimals: decimalsInt,
-            totalSupply: totalSupplyWei
-          }
-        }
-      });
-    });
-    
-    logger.info('Token issuance initiated', {
-      tokenLinkId: response.data.id,
-      symbol,
-      vaultId
-    });
-    
+
+    // Use manual HTTPS request like in the working copym-mono project
+    const payload = {
+      blockchainId: blockchainId,
+      assetId: blockchainId,
+      vaultAccountId: vaultId.toString(), // Ensure it's a string
+      createParams: {
+        contractId: contractId || config.fireblocks.contractTemplateId || process.env.FIREBLOCKS_CONTRACT_TEMPLATE_ID || 'd39ba6d0-f738-4fab-ae00-874213375b5c',
+        deployFunctionParams: [
+          { name: 'name', type: 'string', value: name },
+          { name: 'symbol', type: 'string', value: symbol },
+          { name: 'decimals', type: 'uint8', value: String(decimalsInt) },
+          { name: 'totalSupply', type: 'uint256', value: totalSupplyWei }
+        ]
+      },
+      displayName: name,
+      useGasless: false,
+      feeLevel: 'MEDIUM'
+    };
+
+    logger.info('Creating token on Fireblocks (Manual API)...', { symbol, vaultId });
+
+    // Use manual HTTPS request like in the copym-mono project
+    const result = await makeFireblocksRequest('/v1/tokenization/tokens', 'POST', payload);
+
+    logger.info('Token issuance initiated', { tokenLinkId: result.id, symbol, vaultId });
+
     return {
-      tokenLinkId: response.data.id,
-      status: response.data.status
+      tokenLinkId: result.id,
+      status: result.status
     };
   } catch (error) {
-    logger.error('Failed to issue token', {
+    logger.error('Failed to issue token (Manual API)', {
       vaultId,
       symbol,
       error: error.message
     });
     throw new Error(`Token issuance failed: ${error.message}`);
   }
+};
+
+/**
+ * Make manual Fireblocks API request
+ */
+const makeFireblocksRequest = async (path, method, payload) => {
+  const fs = await import('fs');
+  const crypto = await import('crypto');
+
+  const { apiKey, secretKeyPath, baseUrl } = config.fireblocks;
+  const secretKey = fs.readFileSync(secretKeyPath, 'utf8');
+
+  // For GET requests, payload is null, so we use an empty string for bodyHash
+  const data = payload ? JSON.stringify(payload) : '';
+  const token = {
+    uri: path,
+    nonce: crypto.randomBytes(16).toString('hex'),
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 55,
+    sub: apiKey,
+    bodyHash: payload ? crypto.createHash('sha256').update(data).digest('hex') : crypto.createHash('sha256').update('').digest('hex')
+  };
+
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const encodedPayload = Buffer.from(JSON.stringify(token)).toString('base64url');
+  const signature = crypto.sign('RSA-SHA256', Buffer.from(`${encodedHeader}.${encodedPayload}`), {
+    key: secretKey,
+    padding: crypto.constants.RSA_PKCS1_PADDING
+  }).toString('base64url');
+
+  const jwt = `${encodedHeader}.${encodedPayload}.${signature}`;
+  const url = new URL(baseUrl);
+  const hostname = url.hostname;
+
+  const https = await import('https');
+
+  const options = {
+    hostname,
+    path,
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+      'Authorization': `Bearer ${jwt}`
+    }
+  };
+
+  // Only add Content-Length and body for non-GET methods
+  if (method !== 'GET') {
+    options.headers['Content-Length'] = data.length;
+  }
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let responseData = '';
+      res.on('data', (chunk) => { responseData += chunk; });
+      res.on('end', () => {
+        try {
+          const parsedData = JSON.parse(responseData);
+          if (res.statusCode >= 400) {
+            reject(new Error(parsedData.message || `Fireblocks API Error: ${res.statusCode}`));
+          } else {
+            resolve(parsedData);
+          }
+        } catch (e) {
+          resolve(responseData);
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      logger.error('HTTPS Request Error', { error: error.message });
+      reject(error);
+    });
+
+    // Only write body for non-GET methods
+    if (method !== 'GET') {
+      req.write(data);
+    }
+    req.end();
+  });
 };
 
 /**
@@ -357,7 +522,7 @@ export const getTokenizationStatus = async (tokenLinkId) => {
       }
     };
   }
-  
+
   const fireblocks = getFireblocksClient();
   if (!fireblocks) {
     logger.warn('SIMULATION: Returning mock tokenization status (Fireblocks SDK not initialized)');
@@ -370,15 +535,11 @@ export const getTokenizationStatus = async (tokenLinkId) => {
       }
     };
   }
-  
+
   try {
-    const response = await withRetry(async () => {
-      return await fireblocks.tokenization.getLinkedToken({
-        id: tokenLinkId
-      });
-    });
-    
-    return response.data;
+    // Use manual HTTPS request for getting tokenization status
+    const result = await makeFireblocksRequest(`/v1/tokenization/tokens/${tokenLinkId}`, 'GET', null);
+    return result;
   } catch (error) {
     logger.error('Failed to get tokenization status', {
       tokenLinkId,
