@@ -233,9 +233,49 @@ export const executeOperation = async (operationId, actor, context = {}) => {
 
             // Map the vault ID to a numeric ID for Fireblocks (in sandbox mode)
             // In a real system, this would be a proper mapping from UUID to Fireblocks numeric ID
-            const vaultWalletId = operation.vaultWalletId || operation.payload.vaultWalletId || '88';
-            // If it's a UUID format, default to '88' for sandbox (standard gas vault)
-            const numericVaultId = /^[0-9]+$/.test(vaultWalletId) ? vaultWalletId : '88';
+
+            // First, try to get the vaultWalletId from the operation, then from the custody record if not available
+            let vaultWalletId = operation.vaultWalletId || operation.payload.vaultWalletId;
+
+            // If still not available, try to get it from the custody record
+            if (!vaultWalletId && custodyRecord && custodyRecord.vaultWalletId) {
+                vaultWalletId = custodyRecord.vaultWalletId;
+            }
+
+            // Default to '88' if no vault ID is found
+            if (!vaultWalletId) {
+                vaultWalletId = '88';
+            }
+
+            // Check if vaultWalletId is a UUID format, if so, we need to map it to the actual Fireblocks vault ID
+            // For now, we'll assume that if it's not numeric, we should look it up in the database
+            let numericVaultId;
+            if (/^[0-9]+$/.test(vaultWalletId)) {
+                // It's already a numeric ID
+                numericVaultId = vaultWalletId;
+            } else if (vaultWalletId === '88') {
+                // Explicitly set to gas vault
+                numericVaultId = '88';
+            } else {
+                // It's a UUID, need to look up the corresponding Fireblocks vault ID
+                // First, try to find the vault wallet record in the database
+                const vaultWalletRecord = await prisma.vaultWallet.findFirst({
+                    where: {
+                        id: vaultWalletId  // This is the database ID (UUID)
+                    }
+                });
+
+                if (vaultWalletRecord) {
+                    // Use the Fireblocks ID from the database record
+                    numericVaultId = vaultWalletRecord.fireblocksId;
+                } else {
+                    // If not found, default to '88' but log a warning
+                    logger.warn('Vault wallet record not found, defaulting to gas vault', {
+                        vaultWalletId
+                    });
+                    numericVaultId = '88';
+                }
+            }
 
             const mintData = {
                 assetId: operation.payload.assetId || custodyRecord?.assetId,
@@ -313,9 +353,6 @@ export const executeOperation = async (operationId, actor, context = {}) => {
             executedAt: new Date()
         });
 
-        // Start asynchronous monitoring (Fire-and-forget for demo, or use a proper worker)
-        monitorExecution(operationId, fireblocksTaskId, operation.operationType);
-
         // Log audit event
         await auditService.logOperationExecuted(operationId, 'PENDING_ON_CHAIN', context);
 
@@ -333,78 +370,6 @@ export const executeOperation = async (operationId, actor, context = {}) => {
     }
 };
 
-/**
- * Monitor Fireblocks execution status (Simple Polling Implementation)
- */
-const monitorExecution = async (operationId, taskId, type) => {
-    logger.info('Starting status monitoring', { operationId, taskId });
-
-    let attempts = 0;
-    const maxAttempts = 30;
-    const delay = 10000; // 10 seconds
-
-    const poll = async () => {
-        try {
-            const statusType = type === OperationType.MINT ? 'TOKENIZATION' : 'TRANSACTION';
-            const data = await fireblocksService.monitorStatus(taskId, statusType);
-
-            const currentStatus = type === OperationType.MINT ? data.status : data.status;
-            const txHash = type === OperationType.MINT ? data.txHash : data.txHash;
-
-            // Log granular progress for the live terminal
-            if (attempts === 2) await auditService.logEvent('ON_CHAIN_SUBMISSION', { taskId }, { operationId });
-            if (attempts === 5) await auditService.logEvent('BLOCK_PROPAGATION', { taskId }, { operationId });
-            if (attempts === 10) await auditService.logEvent('FINALIZING_SETTLEMENT', { taskId }, { operationId });
-
-            if (currentStatus === 'COMPLETED') {
-                logger.info('Fireblocks transaction completed', { operationId, txHash });
-
-                const operation = await operationRepository.findById(operationId);
-
-                // Finalize Custody Record status
-                if (type === OperationType.MINT) {
-                    // The mint service handles updating custody status, so we just update operation status
-                    await operationRepository.updateStatus(operationId, OperationStatus.EXECUTED, {
-                        txHash,
-                        completedAt: new Date()
-                    });
-                } else if (type === OperationType.BURN) {
-                    await custodyService.updateCustodyStatus(
-                        operation.custodyRecordId,
-                        CustodyStatus.BURNED,
-                        { txHash },
-                        'SYSTEM'
-                    );
-                    await operationRepository.updateStatus(operationId, OperationStatus.EXECUTED, { txHash });
-                } else {
-                    await operationRepository.updateStatus(operationId, OperationStatus.EXECUTED, { txHash });
-                }
-                return;
-            }
-
-            if (['FAILED', 'REJECTED', 'CANCELLED'].includes(currentStatus)) {
-                logger.warn('Fireblocks transaction failed', { operationId, status: currentStatus });
-                const failureMsg = `Fireblocks status: ${currentStatus}`;
-                await auditService.logOperationFailed(operationId, { message: failureMsg });
-                await operationRepository.updateStatus(operationId, OperationStatus.FAILED, {
-                    failureReason: failureMsg
-                });
-                return;
-            }
-
-            if (attempts < maxAttempts) {
-                attempts++;
-                setTimeout(poll, delay);
-            } else {
-                logger.error('Monitoring timeout', { operationId });
-            }
-        } catch (error) {
-            logger.error('Polling error', { operationId, error: error.message });
-        }
-    };
-
-    setTimeout(poll, delay);
-};
 
 /**
  * List operations
