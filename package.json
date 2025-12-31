@@ -16,7 +16,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "vault:balances": "node scripts/show-vault-balances.js"
+    "vault:balances": "node scripts/show-vault-balances.js",
+    "vault:address": "node scripts/get-wallet-address.js"
   },
   "dependencies": {
     "@fireblocks/ts-sdk": "^13.0.0",
