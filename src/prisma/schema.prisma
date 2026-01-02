@@ -17,6 +17,8 @@ model ApiKey {
   publicKey     String   @unique
   secretKeyHash String   // HMAC secret (hashed)
   tenantId      String?
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
   permissions   Json     // Scoped permissions array
   ipWhitelist   Json?    // Optional IP restrictions
   isActive      Boolean  @default(true)
@@ -24,7 +26,25 @@ model ApiKey {
   updatedAt     DateTime @updatedAt
 
   @@index([publicKey])
+  @@index([userId])
   @@map("api_keys")
+}
+
+// User Accounts
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  role          String   @default("CLIENT") // CLIENT, ADMIN
+  status        String   @default("ACTIVE") // ACTIVE, SUSPENDED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  apiKeys          ApiKey[]
+  balance          UserBalance?
+  
+  @@map("users")
 }
 
 // Fireblocks Vault Metadata
@@ -52,6 +72,10 @@ model CustodyRecord {
   assetId           String   @unique // External asset identifier (immutable)
   status            String   // UNLINKED, LINKED, MINTED, WITHDRAWN, BURNED
   
+  // Two-level isolation
+  tenantId          String   // Platform owner (from API key)
+  createdBy         String   // End user who created this record
+  
   // Token metadata (populated after minting)
   blockchain        String?
   tokenStandard     String?  // ERC721, ERC1155
@@ -76,6 +100,8 @@ model CustodyRecord {
   assetMetadata     AssetMetadata?
 
   @@index([assetId])
+  @@index([tenantId])
+  @@index([createdBy])
   @@index([status])
   @@index([tokenAddress, tokenId])
   @@map("custody_records")
@@ -200,9 +226,14 @@ model Listing {
   assetId           String
   custodyRecordId   String
   
-  sellerId          String   // User ID of the seller
+  // Two-level isolation
+  tenantId          String   // Platform owner
+  sellerId          String   // End user (issuer)
+  
   price             String   // Decimal string for precision
   currency          String   @default("USD")
+  quantityListed    String   // Total quantity listed
+  quantitySold      String   @default("0") // Quantity sold
   
   status            String   // ACTIVE, SOLD, CANCELLED, EXPIRED
   
@@ -213,6 +244,7 @@ model Listing {
   bids              Bid[]
 
   @@index([assetId])
+  @@index([tenantId])
   @@index([sellerId])
   @@index([status])
   @@index([expiryDate])
@@ -225,14 +257,19 @@ model Bid {
   listingId         String
   listing           Listing  @relation(fields: [listingId], references: [id])
   
-  buyerId           String   // User ID of the buyer
+  // Two-level isolation
+  tenantId          String   // Platform owner
+  buyerId           String   // End user (investor)
+  
   amount            String   // Decimal string for precision
+  quantity          String   // Quantity of tokens
   status            String   // PENDING, ACCEPTED, REJECTED
   
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   @@index([listingId])
+  @@index([tenantId])
   @@index([buyerId])
   @@index([status])
   @@map("bids")
@@ -244,8 +281,13 @@ model Ownership {
   assetId           String
   custodyRecordId   String
   
-  ownerId           String   // User ID of the beneficial owner
+  // Two-level isolation
+  tenantId          String   // Platform owner
+  ownerId           String   // End user (investor)
+  
   quantity          String   // Decimal string for precision
+  purchasePrice     String?  // Price paid
+  currency          String   @default("USD")
   
   acquiredAt        DateTime @default(now())
   createdAt         DateTime @default(now())
@@ -253,6 +295,7 @@ model Ownership {
 
   @@unique([assetId, ownerId])
   @@index([assetId])
+  @@index([tenantId])
   @@index([ownerId])
   @@map("ownerships")
 }
@@ -261,6 +304,7 @@ model Ownership {
 model UserBalance {
   id                String   @id @default(uuid())
   userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
   
   balance           String   // Decimal string for precision
   currency          String   @default("USD")

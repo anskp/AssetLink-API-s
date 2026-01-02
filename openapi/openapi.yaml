@@ -2,20 +2,41 @@ openapi: 3.0.3
 info:
   title: AssetLink Custody API
   description: |
+    # AssetLink Custody API
+    
     Secure Custody Infrastructure for Tokenized Real-World Assets (RWAs)
     
     AssetLink Custody is a custody-only backend system designed to securely manage 
     blockchain tokens that represent verified real-world assets.
     
     ## Authentication
-    All API requests require HMAC-SHA256 signature authentication.
     
-    Required headers:
-    - `X-API-KEY`: Your public API key
-    - `X-SIGNATURE`: HMAC-SHA256 signature
-    - `X-TIMESTAMP`: Unix timestamp
+    ### JWT Authentication (User Access)
+    For dashboard and user operations, use JWT tokens:
+    ```
+    Authorization: Bearer YOUR_ACCESS_TOKEN
+    ```
+    
+    ### API Key Authentication (Programmatic Access)
+    For API integrations, use HMAC-SHA256 signature authentication:
+    ```
+    X-API-KEY: your_public_key
+    X-SIGNATURE: hmac_signature
+    X-TIMESTAMP: unix_timestamp
+    X-USER-ID: end_user_identifier (optional for listing, required for mutations)
+    ```
+    
+    **Two-Level Isolation:**
+    - `X-API-KEY`: Identifies the platform owner (tenant)
+    - `X-USER-ID`: Identifies the end user (issuer/investor)
+    
+    Platform owners see ALL activity. End users see only their own data.
     
     Signature payload: `METHOD + PATH + TIMESTAMP + BODY`
+    
+    ## Base URL
+    - Development: `http://localhost:3000/v1`
+    - Production: `https://api.assetlink.com/v1`
     
   version: 1.0.0
   contact:
@@ -33,24 +54,31 @@ servers:
 tags:
   - name: Health
     description: System health and status
+  - name: Authentication
+    description: User authentication and API key management
+  - name: Admin
+    description: Admin operations (requires ADMIN role)
   - name: Assets
-    description: Asset linking and custody management
-  - name: Tokens
-    description: Token minting, burning, and lifecycle
+    description: Asset linking and metadata management
+  - name: Custody
+    description: Custody records and token operations
   - name: Vaults
     description: Fireblocks vault management
   - name: Operations
     description: Maker-checker workflow operations
-  - name: Transfers
-    description: Token withdrawal and transfers
   - name: Audit
     description: Audit trail and compliance
-
-security:
-  - HmacAuth: []
+  - name: Marketplace
+    description: Asset marketplace operations
 
 components:
   securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token for user authentication
+    
     HmacAuth:
       type: apiKey
       in: header
@@ -79,6 +107,49 @@ components:
             timestamp:
               type: string
               format: date-time
+    
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [CLIENT, ADMIN]
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED]
+        createdAt:
+          type: string
+          format: date-time
+    
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        publicKey:
+          type: string
+        secretKey:
+          type: string
+          description: Only returned on creation
+        userId:
+          type: string
+          format: uuid
+        permissions:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
     
     CustodyStatus:
       type: string
@@ -119,6 +190,9 @@ components:
           type: string
         quantity:
           type: string
+        vaultWalletId:
+          type: string
+          format: uuid
         createdAt:
           type: string
           format: date-time
@@ -144,13 +218,16 @@ paths:
                 properties:
                   status:
                     type: string
+                    example: healthy
                   timestamp:
                     type: string
                     format: date-time
                   service:
                     type: string
+                    example: assetlink-custody
                   version:
                     type: string
+                    example: 1.0.0
   
   /:
     get:
@@ -177,3 +254,1823 @@ paths:
                     type: object
                   documentation:
                     type: string
+
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: Create a new user account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  accessToken:
+                    type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      description: Authenticate user and get access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  accessToken:
+                    type: string
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Get a new access token using refresh token cookie
+      security: []
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout user
+      description: Clear refresh token cookie
+      security: []
+      responses:
+        '200':
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user
+      description: Get authenticated user information
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/keys/my:
+    get:
+      tags:
+        - Authentication
+      summary: List my API keys
+      description: Get all API keys for the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKey'
+    
+    post:
+      tags:
+        - Authentication
+      summary: Generate new API key
+      description: Create a new API key for the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+
+  /auth/keys/my/{id}:
+    delete:
+      tags:
+        - Authentication
+      summary: Revoke API key
+      description: Revoke an API key
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: API key revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '404':
+          description: API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/login:
+    post:
+      tags:
+        - Admin
+      summary: Admin login
+      description: Authenticate admin user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Admin login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  accessToken:
+                    type: string
+        '401':
+          description: Invalid credentials or not admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/stats:
+    get:
+      tags:
+        - Admin
+      summary: Get dashboard statistics
+      description: Get system-wide statistics (admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: System statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      active:
+                        type: integer
+                      suspended:
+                        type: integer
+                  apiKeys:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      active:
+                        type: integer
+                      revoked:
+                        type: integer
+                  assets:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                  operations:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: List all users
+      description: Get all users with filters (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, SUSPENDED]
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [CLIENT, ADMIN]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      pages:
+                        type: integer
+
+  /admin/users/{id}/status:
+    patch:
+      tags:
+        - Admin
+      summary: Update user status
+      description: Suspend or activate a user (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [ACTIVE, SUSPENDED]
+      responses:
+        '200':
+          description: User status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /admin/api-keys:
+    get:
+      tags:
+        - Admin
+      summary: List all API keys
+      description: Get all API keys across all users (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKey'
+                  pagination:
+                    type: object
+
+  /admin/assets:
+    get:
+      tags:
+        - Admin
+      summary: List all assets
+      description: Get all custody records (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CustodyStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of assets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CustodyRecord'
+                  pagination:
+                    type: object
+
+  /admin/audit-logs:
+    get:
+      tags:
+        - Admin
+      summary: Get audit logs
+      description: Get system audit logs (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: eventType
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        eventType:
+                          type: string
+                        actor:
+                          type: string
+                        metadata:
+                          type: object
+                        ipAddress:
+                          type: string
+                        timestamp:
+                          type: string
+                          format: date-time
+                  pagination:
+                    type: object
+
+  /docs/openapi.yaml:
+    get:
+      tags:
+        - Health
+      summary: Get OpenAPI specification
+      description: Download the OpenAPI YAML specification
+      security: []
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            text/yaml:
+              schema:
+                type: string
+
+  # ==========================================
+  # CUSTODY ENDPOINTS
+  # ==========================================
+  
+  /custody/link:
+    post:
+      tags:
+        - Custody
+      summary: Link asset to custody
+      description: |
+        Link a real-world asset to custody system. This creates a custody record
+        that can later be minted as a token.
+        
+        **Requires X-USER-ID header** to identify the end user creating the asset.
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: End user identifier (issuer)
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assetId
+              properties:
+                assetId:
+                  type: string
+                  description: Unique identifier for the asset
+                  example: "property_001"
+      responses:
+        '201':
+          description: Asset linked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustodyRecord'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Asset already in custody
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /custody:
+    get:
+      tags:
+        - Custody
+      summary: List custody records
+      description: |
+        List custody records with optional filters.
+        
+        **Two-level isolation:**
+        - Without X-USER-ID: Platform owner sees ALL custody records
+        - With X-USER-ID: End user sees only their own custody records
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-USER-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Optional end user identifier for filtering
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CustodyStatus'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of custody records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  records:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CustodyRecord'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+  /custody/{assetId}:
+    get:
+      tags:
+        - Custody
+      summary: Get custody status
+      description: Get custody record for a specific asset
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-USER-ID
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Custody record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustodyRecord'
+        '404':
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /custody/stats:
+    get:
+      tags:
+        - Custody
+      summary: Get custody statistics
+      description: Get statistics about custody records
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Custody statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  linked:
+                    type: integer
+                  minted:
+                    type: integer
+                  withdrawn:
+                    type: integer
+                  burned:
+                    type: integer
+
+  # ==========================================
+  # OPERATIONS (MAKER-CHECKER) ENDPOINTS
+  # ==========================================
+
+  /operations/mint:
+    post:
+      tags:
+        - Operations
+      summary: Create mint operation (Maker)
+      description: |
+        Create a new token minting operation. This requires approval from a checker
+        before execution.
+        
+        **Maker-Checker Workflow:**
+        1. Maker creates operation (this endpoint)
+        2. Checker reviews and approves/rejects
+        3. System executes approved operation
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - custodyRecordId
+                - blockchain
+                - tokenStandard
+                - quantity
+              properties:
+                custodyRecordId:
+                  type: string
+                  format: uuid
+                  description: ID of the custody record to mint
+                blockchain:
+                  type: string
+                  enum: [ETHEREUM, POLYGON, BSC, AVALANCHE]
+                  example: ETHEREUM
+                tokenStandard:
+                  type: string
+                  enum: [ERC20, ERC721, ERC1155]
+                  example: ERC721
+                quantity:
+                  type: string
+                  description: Number of tokens to mint
+                  example: "1"
+                metadata:
+                  type: object
+                  description: Additional token metadata
+      responses:
+        '201':
+          description: Mint operation created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  type:
+                    type: string
+                    example: MINT
+                  status:
+                    $ref: '#/components/schemas/OperationStatus'
+                  custodyRecordId:
+                    type: string
+                  createdBy:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+
+  /operations/withdraw:
+    post:
+      tags:
+        - Operations
+      summary: Create withdraw operation (Maker)
+      description: Create a token withdrawal operation (requires checker approval)
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - custodyRecordId
+                - destinationAddress
+                - quantity
+              properties:
+                custodyRecordId:
+                  type: string
+                  format: uuid
+                destinationAddress:
+                  type: string
+                  description: Blockchain address to receive tokens
+                  example: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+                quantity:
+                  type: string
+                  example: "1"
+      responses:
+        '201':
+          description: Withdraw operation created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  type:
+                    type: string
+                    example: WITHDRAW
+                  status:
+                    $ref: '#/components/schemas/OperationStatus'
+
+  /operations/burn:
+    post:
+      tags:
+        - Operations
+      summary: Create burn operation (Maker)
+      description: Create a token burning operation (requires checker approval)
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - custodyRecordId
+                - quantity
+              properties:
+                custodyRecordId:
+                  type: string
+                  format: uuid
+                quantity:
+                  type: string
+                  example: "1"
+                reason:
+                  type: string
+                  description: Reason for burning
+      responses:
+        '201':
+          description: Burn operation created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  type:
+                    type: string
+                    example: BURN
+                  status:
+                    $ref: '#/components/schemas/OperationStatus'
+
+  /operations:
+    get:
+      tags:
+        - Operations
+      summary: List operations
+      description: List all operations with optional filters
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/OperationStatus'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [MINT, WITHDRAW, BURN]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of operations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  operations:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+
+  /operations/{id}:
+    get:
+      tags:
+        - Operations
+      summary: Get operation details
+      description: Get details of a specific operation
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Operation details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  type:
+                    type: string
+                  status:
+                    $ref: '#/components/schemas/OperationStatus'
+                  custodyRecordId:
+                    type: string
+                  createdBy:
+                    type: string
+                  checkedBy:
+                    type: string
+                  metadata:
+                    type: object
+                  createdAt:
+                    type: string
+                    format: date-time
+
+  /operations/{id}/approve:
+    post:
+      tags:
+        - Operations
+      summary: Approve operation (Checker)
+      description: |
+        Approve a pending operation. This is the checker's role in the
+        maker-checker workflow.
+        
+        **Checker Approval:**
+        - Checker reviews the operation details
+        - Approves if valid
+        - System automatically executes approved operation
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Checker's user ID
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+                  description: Optional approval comment
+      responses:
+        '200':
+          description: Operation approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                    example: APPROVED
+                  checkedBy:
+                    type: string
+                  checkedAt:
+                    type: string
+                    format: date-time
+        '400':
+          description: Cannot approve (invalid state)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Cannot approve own operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /operations/{id}/reject:
+    post:
+      tags:
+        - Operations
+      summary: Reject operation (Checker)
+      description: Reject a pending operation with reason
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  description: Reason for rejection
+      responses:
+        '200':
+          description: Operation rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                    example: REJECTED
+                  rejectionReason:
+                    type: string
+
+  # ==========================================
+  # MARKETPLACE ENDPOINTS
+  # ==========================================
+
+  /marketplace/listings:
+    get:
+      tags:
+        - Marketplace
+      summary: List active listings
+      description: |
+        List all active marketplace listings for the platform.
+        
+        **Filtered by tenantId** - only shows listings for your platform.
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+        - name: priceMin
+          in: query
+          schema:
+            type: number
+        - name: priceMax
+          in: query
+          schema:
+            type: number
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [price, createdAt, expiryDate]
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: List of active listings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        custodyRecordId:
+                          type: string
+                        sellerId:
+                          type: string
+                        price:
+                          type: string
+                        currency:
+                          type: string
+                        quantityListed:
+                          type: integer
+                        quantitySold:
+                          type: integer
+                        status:
+                          type: string
+                        expiryDate:
+                          type: string
+                          format: date-time
+                        createdAt:
+                          type: string
+                          format: date-time
+    
+    post:
+      tags:
+        - Marketplace
+      summary: Create listing
+      description: |
+        Create a new marketplace listing for an asset.
+        
+        **Requires X-USER-ID** to identify the seller (issuer).
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Seller's user ID (issuer)
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assetId
+                - price
+                - currency
+                - quantity
+                - expiryDate
+              properties:
+                assetId:
+                  type: string
+                  description: Asset ID to list
+                price:
+                  type: string
+                  description: Price per token
+                  example: "100.00"
+                currency:
+                  type: string
+                  example: USD
+                quantity:
+                  type: integer
+                  description: Number of tokens to list
+                  example: 100
+                expiryDate:
+                  type: string
+                  format: date-time
+                  example: "2026-12-31T23:59:59Z"
+      responses:
+        '201':
+          description: Listing created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+
+  /marketplace/listings/{listingId}:
+    get:
+      tags:
+        - Marketplace
+      summary: Get listing details
+      description: Get detailed information about a specific listing
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Listing details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+
+  /marketplace/listings/{listingId}/cancel:
+    put:
+      tags:
+        - Marketplace
+      summary: Cancel listing
+      description: Cancel an active listing (seller only)
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Must be the seller
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Listing cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+
+  /marketplace/listings/{listingId}/bids:
+    get:
+      tags:
+        - Marketplace
+      summary: Get listing bids
+      description: Get all bids for a specific listing
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of bids
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+    
+    post:
+      tags:
+        - Marketplace
+      summary: Place bid
+      description: |
+        Place a bid on a listing.
+        
+        **Requires X-USER-ID** to identify the buyer (investor).
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Buyer's user ID (investor)
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - quantity
+              properties:
+                amount:
+                  type: string
+                  description: Total bid amount
+                  example: "10.00"
+                quantity:
+                  type: integer
+                  description: Number of tokens to buy
+                  example: 10
+      responses:
+        '201':
+          description: Bid placed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      listingId:
+                        type: string
+                      buyerId:
+                        type: string
+                      amount:
+                        type: string
+                      quantity:
+                        type: integer
+                      status:
+                        type: string
+                        example: PENDING
+
+  /marketplace/bids/{bidId}/accept:
+    post:
+      tags:
+        - Marketplace
+      summary: Accept bid
+      description: |
+        Accept a bid and execute the off-chain trade.
+        
+        **Requires X-USER-ID** - must be the seller.
+        
+        **Creates Ownership record** for the buyer.
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Seller's user ID
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Bid accepted, trade executed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      bid:
+                        type: object
+                      ownership:
+                        type: object
+                        description: New ownership record created
+
+  /marketplace/bids/{bidId}/reject:
+    post:
+      tags:
+        - Marketplace
+      summary: Reject bid
+      description: Reject a bid (seller only)
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Bid rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+
+  /marketplace/my-listings:
+    get:
+      tags:
+        - Marketplace
+      summary: Get my listings
+      description: |
+        Get all listings created by the current user.
+        
+        **Requires X-USER-ID** to identify the seller.
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User's listings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+
+  /marketplace/my-portfolio:
+    get:
+      tags:
+        - Marketplace
+      summary: Get my portfolio
+      description: |
+        Get all tokens owned by the current user.
+        
+        **Requires X-USER-ID** to identify the owner.
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-USER-ID
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User's portfolio
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        assetId:
+                          type: string
+                        ownerId:
+                          type: string
+                        quantity:
+                          type: integer
+                        purchasePrice:
+                          type: string
+                        currency:
+                          type: string
+                        acquiredAt:
+                          type: string
+                          format: date-time
+
+  # ==========================================
+  # AUDIT ENDPOINTS
+  # ==========================================
+
+  /audit/logs:
+    get:
+      tags:
+        - Audit
+      summary: Get audit logs
+      description: Get audit trail for the authenticated tenant
+      security:
+        - HmacAuth: []
+      parameters:
+        - name: X-SIGNATURE
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-TIMESTAMP
+          in: header
+          required: true
+          schema:
+            type: integer
+        - name: eventType
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer

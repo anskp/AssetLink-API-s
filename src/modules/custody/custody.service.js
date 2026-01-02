@@ -10,37 +10,65 @@ import logger from '../../utils/logger.js';
  */
 
 /**
- * Link asset to custody
+ * Link asset to custody with two-level isolation
+ * @param {string} assetId - Asset identifier
+ * @param {string} tenantId - Platform owner (from API key)
+ * @param {string} createdBy - End user who created the asset (from X-USER-ID header)
+ * @param {string} actor - API key used
+ * @param {object} context - Additional context
  */
-export const linkAsset = async (assetId, actor, context = {}, status = CustodyStatus.LINKED) => {
+export const linkAsset = async (assetId, tenantId, createdBy, actor, context = {}) => {
     // Check if asset already exists
     const existing = await custodyRepository.findByAssetId(assetId);
     if (existing) {
         throw ConflictError(`Asset ${assetId} is already in custody`);
     }
 
-    // Create custody record
-    const custodyRecord = await custodyRepository.createCustodyRecord(assetId, status);
+    // Create custody record with two-level isolation
+    const custodyRecord = await custodyRepository.createCustodyRecord(
+        assetId, 
+        tenantId, 
+        createdBy, 
+        CustodyStatus.LINKED
+    );
 
     // Log audit event
     await auditService.logAssetLinked(
         custodyRecord.id,
         assetId,
         actor,
-        context
+        { ...context, tenantId, createdBy }
     );
 
-    logger.info('Asset linked to custody', { assetId, custodyRecordId: custodyRecord.id });
+    logger.info('Asset linked to custody', { 
+        assetId, 
+        tenantId, 
+        createdBy, 
+        custodyRecordId: custodyRecord.id 
+    });
 
     return custodyRecord;
 };
 
 /**
- * Get custody status
+ * Get custody status with two-level isolation
+ * @param {string} assetId - Asset identifier
+ * @param {string} tenantId - Platform owner (required)
+ * @param {string} endUserId - End user (optional, if provided filters to their assets only)
  */
-export const getCustodyStatus = async (assetId) => {
+export const getCustodyStatus = async (assetId, tenantId, endUserId = null) => {
     const custodyRecord = await custodyRepository.findByAssetId(assetId);
     if (!custodyRecord) {
+        throw NotFoundError(`Asset ${assetId} not found in custody`);
+    }
+
+    // Two-level isolation check
+    if (custodyRecord.tenantId !== tenantId) {
+        throw NotFoundError(`Asset ${assetId} not found in custody`);
+    }
+
+    // If endUserId is provided, verify it matches (end user can only see their own)
+    if (endUserId && custodyRecord.createdBy !== endUserId) {
         throw NotFoundError(`Asset ${assetId} not found in custody`);
     }
 
@@ -99,10 +127,24 @@ export const updateCustodyStatus = async (id, newStatus, metadata, actor, contex
 };
 
 /**
- * List custody records
+ * List custody records with two-level isolation
+ * @param {object} filters - Filter options
+ * @param {string} filters.tenantId - Platform owner (required)
+ * @param {string} filters.endUserId - End user (optional, filters to their assets only)
  */
 export const listCustodyRecords = async (filters = {}) => {
-    const { records, total } = await custodyRepository.listCustodyRecords(filters);
+    const { tenantId, endUserId, ...otherFilters } = filters;
+
+    // Build filter object with two-level isolation
+    const queryFilters = { tenantId, ...otherFilters };
+
+    // If endUserId is provided, filter by it (end user sees only their own)
+    if (endUserId) {
+        queryFilters.createdBy = endUserId;
+    }
+    // Otherwise, platform owner sees all records for their tenant
+
+    const { records, total } = await custodyRepository.listCustodyRecords(queryFilters);
 
     return {
         records: records.map(enrichCustodyRecord),

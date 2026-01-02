@@ -23,6 +23,8 @@
     "@fireblocks/ts-sdk": "^13.0.0",
     "@prisma/client": "^6.2.0",
     "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "decimal.js": "^10.4.3",
@@ -31,6 +33,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
     "winston": "^3.17.0"
   },
   "devDependencies": {

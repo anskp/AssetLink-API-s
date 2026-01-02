@@ -85,9 +85,15 @@ router.post('/bids/:bidId/accept', marketplaceController.acceptBid);
 router.post('/bids/:bidId/reject', marketplaceController.rejectBid);
 
 /**
- * GET /v1/marketplace/portfolio/:userId
- * Get user's owned assets
+ * GET /v1/marketplace/my-listings
+ * Get listings created by the current end user
  */
-router.get('/portfolio/:userId', marketplaceController.getUserPortfolio);
+router.get('/my-listings', marketplaceController.getMyListings);
+
+/**
+ * GET /v1/marketplace/my-portfolio
+ * Get assets owned by the current end user
+ */
+router.get('/my-portfolio', marketplaceController.getMyPortfolio);
 
 export default router;

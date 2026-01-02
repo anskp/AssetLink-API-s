@@ -20,8 +20,22 @@ export const linkAsset = async (req, res, next) => {
             ]);
         }
 
+        // Two-level isolation: tenantId (platform) + createdBy (end user)
+        const tenantId = req.auth?.tenantId;
+        const createdBy = req.auth?.endUserId; // End user from X-USER-ID header
+
+        if (!tenantId) {
+            throw new ValidationError('Tenant ID not found in authentication context');
+        }
+
+        if (!createdBy) {
+            throw new ValidationError('X-USER-ID header is required to identify the end user');
+        }
+
         const custodyRecord = await custodyService.linkAsset(
             assetId,
+            tenantId,
+            createdBy,
             req.auth?.publicKey || 'unknown',
             {
                 ipAddress: req.ip,
@@ -43,7 +57,14 @@ export const getCustodyStatus = async (req, res, next) => {
     try {
         const { assetId } = req.params;
 
-        const custodyRecord = await custodyService.getCustodyStatus(assetId);
+        const tenantId = req.auth?.tenantId;
+        const endUserId = req.auth?.endUserId;
+
+        if (!tenantId) {
+            throw new ValidationError('Tenant ID not found in authentication context');
+        }
+
+        const custodyRecord = await custodyService.getCustodyStatus(assetId, tenantId, endUserId);
 
         res.json(custodyRecord);
     } catch (error) {
@@ -59,7 +80,16 @@ export const listCustodyRecords = async (req, res, next) => {
     try {
         const { status, limit, offset } = req.query;
 
+        const tenantId = req.auth?.tenantId;
+        const endUserId = req.auth?.endUserId;
+
+        if (!tenantId) {
+            throw new ValidationError('Tenant ID not found in authentication context');
+        }
+
         const result = await custodyService.listCustodyRecords({
+            tenantId,
+            endUserId, // If provided, filter by end user; otherwise show all for platform owner
             status,
             limit: limit ? parseInt(limit) : undefined,
             offset: offset ? parseInt(offset) : undefined

@@ -7,12 +7,18 @@ import { CustodyStatus } from '../../enums/custodyStatus.js';
  */
 
 /**
- * Create new custody record
+ * Create new custody record with two-level isolation
+ * @param {string} assetId - Asset identifier
+ * @param {string} tenantId - Platform owner (from API key)
+ * @param {string} createdBy - End user who created the asset
+ * @param {string} status - Initial status
  */
-export const createCustodyRecord = async (assetId, status = CustodyStatus.LINKED) => {
+export const createCustodyRecord = async (assetId, tenantId, createdBy, status = CustodyStatus.LINKED) => {
     return await prisma.custodyRecord.create({
         data: {
             assetId,
+            tenantId,
+            createdBy,
             status,
             linkedAt: status === CustodyStatus.LINKED ? new Date() : null
         }
@@ -77,12 +83,18 @@ export const updateStatus = async (id, newStatus, metadata = {}) => {
 };
 
 /**
- * List custody records with pagination
+ * List custody records with pagination and two-level isolation
+ * @param {object} filters - Filter options
+ * @param {string} filters.tenantId - Platform owner (required)
+ * @param {string} filters.createdBy - End user (optional)
+ * @param {string} filters.status - Status filter (optional)
  */
 export const listCustodyRecords = async (filters = {}) => {
-    const { status, limit = 50, offset = 0 } = filters;
+    const { tenantId, createdBy, status, limit = 50, offset = 0 } = filters;
 
     const where = {};
+    if (tenantId) where.tenantId = tenantId; // Filter by platform owner
+    if (createdBy) where.createdBy = createdBy; // Filter by end user (if provided)
     if (status) where.status = status;
 
     const [records, total] = await Promise.all([

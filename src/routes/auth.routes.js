@@ -1,6 +1,7 @@
 import express from 'express';
 import * as apiKeyRepository from '../modules/auth/apiKey.repository.js';
-import { requirePermission } from '../modules/auth/auth.middleware.js';
+import * as authController from '../modules/auth/auth.controller.js';
+import { requirePermission, authenticateJwt, authenticate } from '../modules/auth/auth.middleware.js';
 import { BadRequestError, NotFoundError } from '../errors/ApiError.js';
 import { ValidationError } from '../errors/ValidationError.js';
 
@@ -12,10 +13,57 @@ import { ValidationError } from '../errors/ValidationError.js';
 const router = express.Router();
 
 /**
- * Create new API key
- * POST /v1/auth/keys
+ * Auth Endpoints
  */
-router.post('/keys', requirePermission('admin'), async (req, res, next) => {
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+router.post('/refresh', authController.refresh);
+router.post('/logout', authController.logout);
+router.get('/me', authenticateJwt, authController.me);
+
+/**
+ * Client-Facing API Key Management
+ */
+router.get('/keys/my', authenticateJwt, async (req, res, next) => {
+    try {
+        const keys = await apiKeyRepository.listApiKeys({ userId: req.user.sub });
+        res.json({ keys });
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.post('/keys/my', authenticateJwt, async (req, res, next) => {
+    try {
+        const apiKey = await apiKeyRepository.createApiKey({
+            userId: req.user.sub,
+            permissions: ['read', 'write'], // Default for clients
+            tenantId: req.user.sub // For now, 1:1 user to tenant
+        });
+        res.status(201).json(apiKey);
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.delete('/keys/my/:id', authenticateJwt, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const key = await apiKeyRepository.findById(id);
+        if (!key || key.userId !== req.user.sub) {
+            throw NotFoundError('API key not found');
+        }
+        await apiKeyRepository.revokeApiKey(id);
+        res.json({ message: 'API key revoked' });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * API key management endpoints (admin only)
+ */
+router.post('/keys', authenticate, requirePermission('admin'), async (req, res, next) => {
     try {
         const { tenantId, permissions, ipWhitelist } = req.body;
 
@@ -62,7 +110,7 @@ router.post('/keys', requirePermission('admin'), async (req, res, next) => {
  * List API keys
  * GET /v1/auth/keys
  */
-router.get('/keys', requirePermission('admin'), async (req, res, next) => {
+router.get('/keys', authenticate, requirePermission('admin'), async (req, res, next) => {
     try {
         const { tenantId, isActive } = req.query;
 
@@ -85,7 +133,7 @@ router.get('/keys', requirePermission('admin'), async (req, res, next) => {
  * Get specific API key
  * GET /v1/auth/keys/:id
  */
-router.get('/keys/:id', requirePermission('admin'), async (req, res, next) => {
+router.get('/keys/:id', authenticate, requirePermission('admin'), async (req, res, next) => {
     try {
         const { id } = req.params;
 
@@ -113,7 +161,7 @@ router.get('/keys/:id', requirePermission('admin'), async (req, res, next) => {
  * Update API key
  * PATCH /v1/auth/keys/:id
  */
-router.patch('/keys/:id', requirePermission('admin'), async (req, res, next) => {
+router.patch('/keys/:id', authenticate, requirePermission('admin'), async (req, res, next) => {
     try {
         const { id } = req.params;
         const { permissions, ipWhitelist } = req.body;
@@ -150,7 +198,7 @@ router.patch('/keys/:id', requirePermission('admin'), async (req, res, next) => 
  * Revoke API key
  * DELETE /v1/auth/keys/:id
  */
-router.delete('/keys/:id', requirePermission('admin'), async (req, res, next) => {
+router.delete('/keys/:id', authenticate, requirePermission('admin'), async (req, res, next) => {
     try {
         const { id } = req.params;
 

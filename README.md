@@ -8,6 +8,15 @@ AssetLink Custody is a custody-only backend system designed to securely manage b
 
 ## 🏗️ Architecture Overview
 
+### Two-Level Isolation System
+AssetLink supports **multi-tenant platforms** with **end-user isolation**:
+- **Level 1 (Tenant)**: Platform owner identified by API key
+- **Level 2 (End User)**: Issuers/investors identified by `X-USER-ID` header
+
+Platform owners see ALL activity. End users see only their own data.
+
+📖 **See:** `TWO_LEVEL_ISOLATION_GUIDE.md` for complete details
+
 ### Service Boundaries
 - **AssetLink Custody** = Custody + Ledger + Settlement Engine
 - **Marketplace UI** = Consumer of these APIs

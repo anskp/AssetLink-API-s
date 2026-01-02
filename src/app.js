@@ -1,6 +1,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { config } from './config/env.js';
 import logger from './utils/logger.js';
@@ -30,8 +31,15 @@ app.use(helmet({
 }));
 
 // CORS configuration
+const allowedOrigins = [...config.corsOrigins, 'http://localhost:5173', 'http://localhost:5174'];
 app.use(cors({
-    origin: config.corsOrigins,
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true
 }));
 
@@ -48,6 +56,9 @@ app.use('/v1/', limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Cookie parser middleware (required for refresh tokens)
+app.use(cookieParser());
 
 // Serve static files from UI folder
 app.use('/dashboard', express.static('src/ui'));

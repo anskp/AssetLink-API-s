@@ -10,7 +10,7 @@ import { hashSecret, generateApiKeyPair } from '../../utils/crypto.js';
  * Create a new API key
  */
 export const createApiKey = async (data) => {
-    const { tenantId, permissions = ['read'], ipWhitelist = null } = data;
+    const { tenantId, userId, permissions = ['read'], ipWhitelist = null } = data;
 
     // Generate key pair
     const { publicKey, secretKey } = generateApiKeyPair();
@@ -24,6 +24,7 @@ export const createApiKey = async (data) => {
             publicKey,
             secretKeyHash,
             tenantId,
+            userId,
             permissions,
             ipWhitelist,
             isActive: true
@@ -59,10 +60,11 @@ export const findById = async (id) => {
  * List all API keys (with optional filters)
  */
 export const listApiKeys = async (filters = {}) => {
-    const { tenantId, isActive } = filters;
+    const { tenantId, userId, isActive } = filters;
 
     const where = {};
     if (tenantId) where.tenantId = tenantId;
+    if (userId) where.userId = userId;
     if (isActive !== undefined) where.isActive = isActive;
 
     return await prisma.apiKey.findMany({

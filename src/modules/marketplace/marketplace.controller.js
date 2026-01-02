@@ -1,6 +1,6 @@
 /**
  * Marketplace Controller
- * Handles HTTP requests for marketplace operations
+ * Handles HTTP requests for marketplace operations with two-level isolation
  */
 
 import * as listingService from './listing.service.js';
@@ -15,21 +15,30 @@ import logger from '../../utils/logger.js';
  */
 export const createListing = async (req, res, next) => {
   try {
-    const { assetId, price, currency, expiryDate } = req.body;
-    const sellerId = req.user?.id || req.body.sellerId; // Get from auth context or body
+    const { assetId, price, currency, expiryDate, quantity } = req.body;
+    
+    // Two-level isolation
+    const tenantId = req.auth?.tenantId;
+    const sellerId = req.auth?.endUserId; // End user from X-USER-ID header
+    
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
+    }
     
     if (!sellerId) {
-      throw new ApiError(401, 'User authentication required');
+      throw new ApiError(401, 'X-USER-ID header is required to identify the seller');
     }
     
     logger.info('Creating listing', {
       assetId,
+      tenantId,
       sellerId,
       price
     });
     
     const listing = await listingService.createListing(
-      { assetId, price, currency, expiryDate },
+      { assetId, price, currency, expiryDate, quantity },
+      tenantId,
       sellerId,
       { ipAddress: req.ip, userAgent: req.get('user-agent') }
     );
@@ -49,12 +58,20 @@ export const createListing = async (req, res, next) => {
 /**
  * GET /v1/marketplace/listings
  * List active listings with filters
+ * Platform owner sees all, end user sees all available listings
  */
 export const listActiveListings = async (req, res, next) => {
   try {
     const { assetType, priceMin, priceMax, blockchain, sortBy, sortOrder } = req.query;
     
+    const tenantId = req.auth?.tenantId;
+    
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
+    }
+    
     logger.info('Listing active listings', {
+      tenantId,
       assetType,
       priceMin,
       priceMax,
@@ -63,6 +80,7 @@ export const listActiveListings = async (req, res, next) => {
     });
     
     const listings = await listingService.listActiveListings({
+      tenantId,
       assetType,
       priceMin,
       priceMax,
@@ -91,9 +109,15 @@ export const getListingDetails = async (req, res, next) => {
   try {
     const { listingId } = req.params;
     
-    logger.info('Getting listing details', { listingId });
+    const tenantId = req.auth?.tenantId;
     
-    const listing = await listingService.getListingDetails(listingId);
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
+    }
+    
+    logger.info('Getting listing details', { listingId, tenantId });
+    
+    const listing = await listingService.getListingDetails(listingId, tenantId);
     
     res.status(200).json({
       success: true,
@@ -115,17 +139,24 @@ export const getListingDetails = async (req, res, next) => {
 export const cancelListing = async (req, res, next) => {
   try {
     const { listingId } = req.params;
-    const userId = req.user?.id || req.body.userId;
     
-    if (!userId) {
-      throw new ApiError(401, 'User authentication required');
+    const tenantId = req.auth?.tenantId;
+    const sellerId = req.auth?.endUserId;
+    
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
     }
     
-    logger.info('Cancelling listing', { listingId, userId });
+    if (!sellerId) {
+      throw new ApiError(401, 'X-USER-ID header is required');
+    }
+    
+    logger.info('Cancelling listing', { listingId, tenantId, sellerId });
     
     const listing = await listingService.cancelListing(
       listingId,
-      userId,
+      tenantId,
+      sellerId,
       { ipAddress: req.ip, userAgent: req.get('user-agent') }
     );
     
@@ -149,18 +180,25 @@ export const cancelListing = async (req, res, next) => {
 export const placeBid = async (req, res, next) => {
   try {
     const { listingId } = req.params;
-    const { amount } = req.body;
-    const buyerId = req.user?.id || req.body.buyerId;
+    const { amount, quantity } = req.body;
     
-    if (!buyerId) {
-      throw new ApiError(401, 'User authentication required');
+    const tenantId = req.auth?.tenantId;
+    const buyerId = req.auth?.endUserId;
+    
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
     }
     
-    logger.info('Placing bid', { listingId, buyerId, amount });
+    if (!buyerId) {
+      throw new ApiError(401, 'X-USER-ID header is required to identify the buyer');
+    }
+    
+    logger.info('Placing bid', { listingId, tenantId, buyerId, amount, quantity });
     
     const bid = await tradeService.placeBid(
       listingId,
-      { amount },
+      { amount, quantity },
+      tenantId,
       buyerId,
       { ipAddress: req.ip, userAgent: req.get('user-agent') }
     );
@@ -180,21 +218,28 @@ export const placeBid = async (req, res, next) => {
 
 /**
  * POST /v1/marketplace/bids/:bidId/accept
- * Accept a bid
+ * Accept a bid (executes off-chain trade)
  */
 export const acceptBid = async (req, res, next) => {
   try {
     const { bidId } = req.params;
-    const sellerId = req.user?.id || req.body.sellerId;
     
-    if (!sellerId) {
-      throw new ApiError(401, 'User authentication required');
+    const tenantId = req.auth?.tenantId;
+    const sellerId = req.auth?.endUserId;
+    
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
     }
     
-    logger.info('Accepting bid', { bidId, sellerId });
+    if (!sellerId) {
+      throw new ApiError(401, 'X-USER-ID header is required to identify the seller');
+    }
+    
+    logger.info('Accepting bid', { bidId, tenantId, sellerId });
     
     const result = await tradeService.acceptBid(
       bidId,
+      tenantId,
       sellerId,
       { ipAddress: req.ip, userAgent: req.get('user-agent') }
     );
@@ -219,16 +264,23 @@ export const acceptBid = async (req, res, next) => {
 export const rejectBid = async (req, res, next) => {
   try {
     const { bidId } = req.params;
-    const sellerId = req.user?.id || req.body.sellerId;
     
-    if (!sellerId) {
-      throw new ApiError(401, 'User authentication required');
+    const tenantId = req.auth?.tenantId;
+    const sellerId = req.auth?.endUserId;
+    
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
     }
     
-    logger.info('Rejecting bid', { bidId, sellerId });
+    if (!sellerId) {
+      throw new ApiError(401, 'X-USER-ID header is required');
+    }
+    
+    logger.info('Rejecting bid', { bidId, tenantId, sellerId });
     
     const bid = await tradeService.rejectBid(
       bidId,
+      tenantId,
       sellerId,
       { ipAddress: req.ip, userAgent: req.get('user-agent') }
     );
@@ -254,9 +306,15 @@ export const getListingBids = async (req, res, next) => {
   try {
     const { listingId } = req.params;
     
-    logger.info('Getting listing bids', { listingId });
+    const tenantId = req.auth?.tenantId;
     
-    const bids = await tradeService.getListingBids(listingId);
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
+    }
+    
+    logger.info('Getting listing bids', { listingId, tenantId });
+    
+    const bids = await tradeService.getListingBids(listingId, tenantId);
     
     res.status(200).json({
       success: true,
@@ -272,45 +330,86 @@ export const getListingBids = async (req, res, next) => {
 };
 
 /**
- * GET /v1/marketplace/portfolio/:userId
- * Get user's owned assets
+ * GET /v1/marketplace/my-listings
+ * Get listings created by the current end user
  */
-export const getUserPortfolio = async (req, res, next) => {
+export const getMyListings = async (req, res, next) => {
   try {
-    const { userId } = req.params;
+    const tenantId = req.auth?.tenantId;
+    const sellerId = req.auth?.endUserId;
     
-    logger.info('Getting user portfolio', { userId });
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
+    }
     
-    // Get ownership records for user
-    const ownerships = await prisma.ownership.findMany({
-      where: { ownerId: userId },
+    if (!sellerId) {
+      throw new ApiError(401, 'X-USER-ID header is required');
+    }
+    
+    logger.info('Getting my listings', { tenantId, sellerId });
+    
+    const listings = await prisma.listing.findMany({
+      where: { 
+        tenantId,
+        sellerId 
+      },
       include: {
-        custodyRecord: {
-          include: {
-            assetMetadata: true
-          }
+        custodyRecord: true,
+        bids: {
+          orderBy: { createdAt: 'desc' }
         }
-      }
+      },
+      orderBy: { createdAt: 'desc' }
     });
-    
-    const portfolio = ownerships.map(ownership => ({
-      assetId: ownership.assetId,
-      custodyRecordId: ownership.custodyRecordId,
-      quantity: ownership.quantity,
-      acquiredAt: ownership.acquiredAt,
-      asset: {
-        ...ownership.custodyRecord,
-        assetMetadata: ownership.custodyRecord?.assetMetadata
-      }
-    }));
     
     res.status(200).json({
       success: true,
-      data: portfolio
+      data: listings
     });
   } catch (error) {
-    logger.error('Failed to get user portfolio', {
-      userId: req.params.userId,
+    logger.error('Failed to get my listings', {
+      error: error.message
+    });
+    next(error);
+  }
+};
+
+/**
+ * GET /v1/marketplace/my-portfolio
+ * Get assets owned by the current end user
+ */
+export const getMyPortfolio = async (req, res, next) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    const ownerId = req.auth?.endUserId;
+    
+    if (!tenantId) {
+      throw new ApiError(401, 'Tenant ID not found in authentication context');
+    }
+    
+    if (!ownerId) {
+      throw new ApiError(401, 'X-USER-ID header is required');
+    }
+    
+    logger.info('Getting my portfolio', { tenantId, ownerId });
+    
+    const ownerships = await prisma.ownership.findMany({
+      where: { 
+        tenantId,
+        ownerId 
+      },
+      include: {
+        custodyRecord: true
+      },
+      orderBy: { acquiredAt: 'desc' }
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: ownerships
+    });
+  } catch (error) {
+    logger.error('Failed to get my portfolio', {
       error: error.message
     });
     next(error);
@@ -326,5 +425,6 @@ export default {
   acceptBid,
   rejectBid,
   getListingBids,
-  getUserPortfolio
+  getMyListings,
+  getMyPortfolio
 };

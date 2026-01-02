@@ -51,7 +51,7 @@ export const config = {
     },
 
     // CORS
-    corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
+    corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173', 'http://localhost:5174'],
 
     // Logging
     logLevel: process.env.LOG_LEVEL || 'info'

@@ -6,6 +6,8 @@ import assetRoutes from './asset.routes.js';
 import operationRoutes from './operation.routes.js';
 import vaultRoutes from './vault.routes.js';
 import marketplaceRoutes from './marketplace.routes.js';
+import adminRoutes from './admin.routes.js';
+import docsRoutes from './docs.routes.js';
 import { authenticate } from '../modules/auth/auth.middleware.js';
 
 /**
@@ -40,8 +42,14 @@ router.get('/', (req, res) => {
 });
 
 
-// Mount auth routes (protected by authentication middleware)
-router.use('/auth', authenticate, authRoutes);
+// Mount auth routes (contains both public and protected endpoints)
+router.use('/auth', authRoutes);
+
+// Mount admin routes (admin authentication and management)
+router.use('/admin', adminRoutes);
+
+// Mount docs routes (public API documentation)
+router.use('/docs', docsRoutes);
 
 // Mount custody routes
 router.use('/custody', authenticate, custodyRoutes);
