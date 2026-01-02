@@ -287,8 +287,6 @@ export const executeOperation = async (operationId, actor, context = {}) => {
                 vaultWalletId: numericVaultId
             };
 
-            console.log('DEBUG: About to call mint service with:', mintData);
-
             const result = await mintService.mintToken(mintData, 'SYSTEM', {
                 operationId: operationId,
                 custodyRecordId: operation.custodyRecordId

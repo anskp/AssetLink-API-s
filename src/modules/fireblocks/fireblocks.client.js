@@ -408,6 +408,12 @@ export const issueToken = async (vaultId, tokenConfig) => {
     // Use manual HTTPS request like in the copym-mono project
     const result = await makeFireblocksRequest('/v1/tokenization/tokens', 'POST', payload);
 
+    // Log actual Fireblocks response to console for external API users
+    console.log('\n🔥 FIREBLOCKS RESPONSE:');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(JSON.stringify(result, null, 2));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
     logger.info('Token issuance initiated', { tokenLinkId: result.id, symbol, vaultId });
 
     return {

@@ -114,7 +114,7 @@ export const mintToken = async (mintData, actor, context = {}) => {
 
     // Issue token via Fireblocks
     const result = await fireblocksService.issueToken(vaultWalletId, tokenConfig);
-
+    
     logger.info('Token mint initiated successfully', {
       tokenLinkId: result.tokenLinkId,
       assetId,
@@ -257,7 +257,7 @@ const ensureGasForVault = async (vaultId, blockchainId) => {
         blockchainId,  // Asset to transfer (gas token)
         transferAmount // Amount to transfer
       );
-
+      
       logger.info('Gas transfer initiated', {
         transferId: transferResult,
         fromVault: GAS_VAULT_ID,
@@ -274,7 +274,7 @@ const ensureGasForVault = async (vaultId, blockchainId) => {
         balance: gasBalance + transferAmount,
         timestamp: Date.now()
       });
-
+      
       logger.info('Gas transfer completed successfully', {
         transferId: transferResult,
         vaultId,
@@ -342,6 +342,12 @@ const monitorMintingStatus = async (tokenLinkId, custodyRecordId, totalSupply, a
       const currentStatus = statusData.status;
       const txHash = statusData.txHash;
 
+      // Log actual Fireblocks status response
+      console.log(`\n🔥 FIREBLOCKS STATUS UPDATE #${attempts}:`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(JSON.stringify(statusData, null, 2));
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
       logger.info('Mint status update', {
         tokenLinkId,
         status: currentStatus,
