@@ -15,6 +15,11 @@ import logger from '../../utils/logger.js';
 // Fixed gas vault ID
 const GAS_VAULT_ID = '88';
 
+// Global tracking for active monitors to prevent duplicate monitoring across the application
+// Using separate Maps for operation tracking and monitoring tracking
+const activeMintOperations = new Map(); // Tracks mint operations by assetId to prevent duplicate mint attempts
+const activeMintMonitors = new Map();   // Tracks active monitoring by tokenLinkId to prevent duplicate monitoring
+
 /**
  * Mint a new token on the blockchain via Fireblocks
  * @param {Object} mintData - Token minting parameters
@@ -75,6 +80,19 @@ export const mintToken = async (mintData, actor, context = {}) => {
     throw BadRequestError(`Asset must be in LINKED status. Current status: ${custodyRecord.status}`);
   }
 
+  // Check if a mint operation is already in progress for this asset
+  const mintOperationKey = `mint_op_${assetId}`;
+  if (activeMintOperations.has(mintOperationKey)) {
+    logger.warn('Mint operation already in progress for this asset, skipping duplicate', { assetId });
+    throw BadRequestError(`Mint operation already in progress for asset ${assetId}`);
+  }
+
+  // Add to active operations to prevent duplicate mint attempts
+  activeMintOperations.set(mintOperationKey, {
+    startedAt: Date.now(),
+    assetId
+  });
+
   // Prepare token configuration
   const tokenConfig = {
     name: tokenName,
@@ -117,7 +135,25 @@ export const mintToken = async (mintData, actor, context = {}) => {
     });
 
     // Start monitoring the minting process
-    monitorMintingStatus(result.tokenLinkId, custodyRecord.id, actor, context);
+    // Note: We don't await this to avoid blocking the response,
+    // but we'll remove the operation key from active monitors after a delay
+    try {
+      monitorMintingStatus(result.tokenLinkId, custodyRecord.id, actor, context);
+    } catch (monitoringError) {
+      logger.error('Failed to start mint monitoring', {
+        tokenLinkId: result.tokenLinkId,
+        assetId,
+        error: monitoringError.message
+      });
+    }
+
+    // Clean up the mint operation key after a delay to allow monitoring to start
+    setTimeout(() => {
+      const mintOperationKey = `mint_op_${assetId}`;
+      if (activeMintOperations.has(mintOperationKey)) {
+        activeMintOperations.delete(mintOperationKey);
+      }
+    }, 5000); // 5 seconds delay before cleanup
 
     return {
       success: true,
@@ -132,6 +168,12 @@ export const mintToken = async (mintData, actor, context = {}) => {
       tokenSymbol,
       error: error.message
     });
+
+    // Clean up the mint operation key on error
+    const mintOperationKey = `mint_op_${assetId}`;
+    if (activeMintOperations.has(mintOperationKey)) {
+      activeMintOperations.delete(mintOperationKey);
+    }
 
     // Log failure audit event
     await auditService.logEvent('TOKEN_MINT_FAILED', {
@@ -149,12 +191,37 @@ export const mintToken = async (mintData, actor, context = {}) => {
   }
 };
 
+// Cache for gas balance checks to reduce API calls
+// Using a Map for efficient lookups and automatic cleanup
+const gasBalanceCache = new Map();
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds (increased to reduce API calls)
+
 /**
  * Ensure the vault has sufficient gas for operations
  * Transfer from gas vault (88) if insufficient
  */
 const ensureGasForVault = async (vaultId, blockchainId) => {
   try {
+    const cacheKey = `${vaultId}-${blockchainId}`;
+    const now = Date.now();
+
+    // Check if we have a recent cache entry
+    if (gasBalanceCache.has(cacheKey)) {
+      const cacheEntry = gasBalanceCache.get(cacheKey);
+      if (now - cacheEntry.timestamp < CACHE_DURATION) {
+        logger.info('Using cached gas balance for vault', {
+          vaultId,
+          blockchainId,
+          balance: cacheEntry.balance
+        });
+
+        // If cached balance is sufficient, return early
+        if (cacheEntry.balance >= 0.001) {
+          return;
+        }
+      }
+    }
+
     logger.info('Checking gas balance for vault', { vaultId, blockchainId });
 
     // Get vault account information to check gas balance
@@ -163,6 +230,12 @@ const ensureGasForVault = async (vaultId, blockchainId) => {
     // Find the gas asset (e.g., ETH_TEST5 for Ethereum testnets)
     const gasAsset = vaultInfo.wallets.find(wallet => wallet.blockchain === blockchainId);
     const gasBalance = parseFloat(gasAsset?.balance || '0');
+
+    // Update cache with the new balance
+    gasBalanceCache.set(cacheKey, {
+      balance: gasBalance,
+      timestamp: now
+    });
 
     // Define minimum gas threshold (adjust as needed)
     const minGasThreshold = 0.001; // Minimum 0.001 ETH equivalent for gas fees
@@ -196,6 +269,12 @@ const ensureGasForVault = async (vaultId, blockchainId) => {
       // Wait for gas transfer to complete before proceeding
       await waitForTransferCompletion(transferResult);
 
+      // Update cache with new balance after transfer
+      gasBalanceCache.set(cacheKey, {
+        balance: gasBalance + transferAmount,
+        timestamp: Date.now()
+      });
+
       logger.info('Gas transfer completed successfully', {
         transferId: transferResult,
         vaultId,
@@ -223,23 +302,11 @@ const ensureGasForVault = async (vaultId, blockchainId) => {
  * Wait for transfer completion
  */
 const waitForTransferCompletion = async (transferId) => {
-  const maxAttempts = 30; // 5 minutes with 10s intervals
-  const interval = 10000; // 10 seconds
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      // In a real implementation, you would check the transfer status
-      // For now, we'll just wait the interval time
-      await new Promise(resolve => setTimeout(resolve, interval));
-      break; // Exit loop after waiting
-    } catch (error) {
-      logger.warn('Error checking transfer status, continuing...', {
-        transferId,
-        error: error.message
-      });
-      break; // Exit loop on error
-    }
-  }
+  // For now, we'll just wait a fixed time since the actual implementation
+  // would require checking transfer status which would add more API calls
+  // In a real implementation, you would check the transfer status
+  // with exponential backoff to reduce API calls
+  await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
 };
 
 /**
@@ -249,8 +316,24 @@ const monitorMintingStatus = async (tokenLinkId, custodyRecordId, actor, context
   logger.info('Starting mint status monitoring', { tokenLinkId, custodyRecordId });
 
   let attempts = 0;
-  const maxAttempts = 30;
-  const delay = 10000; // 10 seconds
+  const maxAttempts = 20; // Reduced attempts to reduce total API calls
+  const initialDelay = 120000; // 2 minutes (increased to reduce API calls)
+  const maxDelay = 600000; // 10 minutes maximum delay between polls
+
+  // Track active monitoring to prevent duplicate monitors
+  const monitoringKey = `mint_${tokenLinkId}`;
+
+  // Check if monitoring is already active using Map
+  if (activeMintMonitors.has(monitoringKey)) {
+    logger.info('Mint monitoring already active for this tokenLinkId, skipping duplicate', { tokenLinkId });
+    return;
+  }
+
+  // Add to active monitors
+  activeMintMonitors.set(monitoringKey, {
+    startedAt: Date.now(),
+    custodyRecordId
+  });
 
   const poll = async () => {
     try {
@@ -312,6 +395,8 @@ const monitorMintingStatus = async (tokenLinkId, custodyRecordId, actor, context
           context
         );
 
+        // Remove from active monitors
+        activeMintMonitors.delete(monitoringKey);
         return;
       }
 
@@ -329,13 +414,23 @@ const monitorMintingStatus = async (tokenLinkId, custodyRecordId, actor, context
           action: `Token mint failed with status: ${currentStatus}`
         }, { custodyRecordId });
 
+        // Remove from active monitors
+        activeMintMonitors.delete(monitoringKey);
         return;
       }
 
       if (attempts < maxAttempts) {
         attempts++;
-        // Use a more reliable async delay instead of setTimeout
-        await new Promise(resolve => setTimeout(resolve, delay));
+        // Use exponential backoff with maximum cap to reduce API calls
+        // Start with 2min, then 3min, 4min, etc., up to 10 minutes
+        const exponentialDelay = Math.min(initialDelay + (attempts * 60000), maxDelay);
+        logger.info('Waiting before next status check', {
+          tokenLinkId,
+          attempts,
+          delay: exponentialDelay
+        });
+
+        await new Promise(resolve => setTimeout(resolve, exponentialDelay));
         await poll(); // Recursive call instead of setTimeout
       } else {
         logger.error('Mint monitoring timeout', {
@@ -347,19 +442,87 @@ const monitorMintingStatus = async (tokenLinkId, custodyRecordId, actor, context
           tokenLinkId,
           action: 'Token mint monitoring timed out'
         }, { custodyRecordId });
+
+        // Remove from active monitors
+        activeMintMonitors.delete(monitoringKey);
       }
     } catch (error) {
       logger.error('Mint monitoring error', {
         tokenLinkId,
         error: error.message
       });
+
+      // If it's a rate limit error or authentication error, wait longer before retrying
+      if (error.message.includes('Too Many Requests') ||
+          error.message.includes('429') ||
+          error.message.includes('Unauthorized')) {
+        const rateLimitDelay = 300000; // 5 minutes for rate limit or auth errors
+        logger.info('Rate limit or auth error, waiting longer before retry', {
+          tokenLinkId,
+          delay: rateLimitDelay,
+          error: error.message
+        });
+        await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
+        if (attempts < maxAttempts) {
+          attempts++;
+          await poll(); // Retry after longer delay
+        } else {
+          activeMintMonitors.delete(monitoringKey);
+        }
+      } else if (attempts < maxAttempts) {
+        attempts++;
+        // Use exponential backoff for other errors too, with maximum cap
+        const exponentialDelay = Math.min(initialDelay + (attempts * 60000), maxDelay);
+        logger.info('Waiting before retry after error', {
+          tokenLinkId,
+          attempts,
+          delay: exponentialDelay
+        });
+        await new Promise(resolve => setTimeout(resolve, exponentialDelay));
+        await poll(); // Recursive call instead of setTimeout
+      } else {
+        activeMintMonitors.delete(monitoringKey);
+      }
     }
   };
 
+  // Check the initial status before starting monitoring
+  try {
+    const initialStatus = await fireblocksService.getTokenizationStatus(tokenLinkId);
+    if (initialStatus.status === 'COMPLETED') {
+      logger.info('Token mint already completed, skipping monitoring', { tokenLinkId });
+      activeMintMonitors.delete(monitoringKey);
+      return;
+    }
+  } catch (error) {
+    logger.warn('Could not get initial status, proceeding with monitoring', {
+      tokenLinkId,
+      error: error.message
+    });
+  }
+
   // Start monitoring after a short delay
-  await new Promise(resolve => setTimeout(resolve, delay));
+  await new Promise(resolve => setTimeout(resolve, initialDelay));
   await poll();
 };
+
+// Clean up active monitors periodically to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  const expiredKeys = [];
+
+  for (const [key, monitor] of activeMintMonitors.entries()) {
+    // Clean up monitors that have been active for more than 24 hours
+    if (now - monitor.startedAt > 24 * 60 * 60 * 1000) {
+      expiredKeys.push(key);
+    }
+  }
+
+  for (const key of expiredKeys) {
+    activeMintMonitors.delete(key);
+    logger.info('Cleaned up expired monitor', { key });
+  }
+}, 60 * 60 * 1000); // Run cleanup every hour
 
 /**
  * Get minting status for a specific token link
