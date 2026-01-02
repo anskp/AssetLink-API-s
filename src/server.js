@@ -23,9 +23,16 @@ const startServer = async () => {
 
         // Start HTTP server
         server = app.listen(config.port, () => {
-            logger.info(`🚀 AssetLink Custody server running on port ${config.port}`);
-            logger.info(`Environment: ${config.nodeEnv}`);
-            logger.info(`Health check: http://localhost:${config.port}/health`);
+            console.log('\n' + '='.repeat(60));
+            console.log('🚀 AssetLink Custody Backend Server Started!');
+            console.log('='.repeat(60));
+            console.log(`📍 Server URL:     http://localhost:${config.port}`);
+            console.log(`🏥 Health Check:   http://localhost:${config.port}/health`);
+            console.log(`📚 API Docs:       http://localhost:${config.port}/openapi.yaml`);
+            console.log(`🌍 Environment:    ${config.nodeEnv}`);
+            console.log('='.repeat(60) + '\n');
+            
+            logger.info(`AssetLink Custody server running on port ${config.port}`);
         });
 
     } catch (error) {

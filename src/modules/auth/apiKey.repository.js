@@ -10,7 +10,7 @@ import { hashSecret, generateApiKeyPair } from '../../utils/crypto.js';
  * Create a new API key
  */
 export const createApiKey = async (data) => {
-    const { tenantId, userId, permissions = ['read'], ipWhitelist = null } = data;
+    const { tenantId, userId, permissions = ['read'], ipWhitelist = null, role = 'MAKER' } = data;
 
     // Generate key pair
     const { publicKey, secretKey } = generateApiKeyPair();
@@ -25,6 +25,7 @@ export const createApiKey = async (data) => {
             secretKeyHash,
             tenantId,
             userId,
+            role,
             permissions,
             ipWhitelist,
             isActive: true
@@ -73,6 +74,7 @@ export const listApiKeys = async (filters = {}) => {
             id: true,
             publicKey: true,
             tenantId: true,
+            role: true,
             permissions: true,
             ipWhitelist: true,
             isActive: true,
@@ -103,6 +105,7 @@ export const updateApiKey = async (id, data) => {
             id: true,
             publicKey: true,
             tenantId: true,
+            role: true,
             permissions: true,
             ipWhitelist: true,
             isActive: true,

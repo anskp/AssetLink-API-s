@@ -138,7 +138,7 @@ export const mintToken = async (mintData, actor, context = {}) => {
     // Note: We don't await this to avoid blocking the response,
     // but we'll remove the operation key from active monitors after a delay
     try {
-      monitorMintingStatus(result.tokenLinkId, custodyRecord.id, actor, context);
+      monitorMintingStatus(result.tokenLinkId, custodyRecord.id, totalSupply.toString(), actor, context);
     } catch (monitoringError) {
       logger.error('Failed to start mint monitoring', {
         tokenLinkId: result.tokenLinkId,
@@ -312,8 +312,8 @@ const waitForTransferCompletion = async (transferId) => {
 /**
  * Monitor minting status and update custody record when complete
  */
-const monitorMintingStatus = async (tokenLinkId, custodyRecordId, actor, context) => {
-  logger.info('Starting mint status monitoring', { tokenLinkId, custodyRecordId });
+const monitorMintingStatus = async (tokenLinkId, custodyRecordId, totalSupply, actor, context) => {
+  logger.info('Starting mint status monitoring', { tokenLinkId, custodyRecordId, totalSupply });
 
   let attempts = 0;
   const maxAttempts = 20; // Reduced attempts to reduce total API calls
@@ -375,7 +375,7 @@ const monitorMintingStatus = async (tokenLinkId, custodyRecordId, actor, context
             tokenStandard: statusData.tokenMetadata?.tokenStandard || 'ERC20', // Default to ERC20
             tokenAddress: statusData.tokenMetadata?.contractAddress || tokenLinkId,
             tokenId: statusData.tokenId || tokenLinkId,
-            quantity: '1', // Default to 1 for minted tokens
+            quantity: totalSupply || '1', // Use the actual total supply from minting
             txHash: txHash,
             mintedAt: new Date()
           },

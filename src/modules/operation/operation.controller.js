@@ -136,3 +136,102 @@ export default {
     listOperations,
     getOperationDetails
 };
+
+/**
+ * DASHBOARD ENDPOINTS (JWT Authentication)
+ */
+
+/**
+ * Initiate mint operation from dashboard
+ * POST /v1/operations/dashboard/mint
+ */
+export const initiateMintOperationDashboard = async (req, res, next) => {
+    try {
+        const { assetId, tokenSymbol, tokenName, totalSupply, decimals, blockchain, vaultWalletId } = req.body;
+        const userId = req.user.sub;
+
+        const operation = await operationService.initiateMintOperation(
+            { 
+                assetId, 
+                tokenSymbol, 
+                tokenName, 
+                totalSupply, 
+                decimals, 
+                blockchainId: blockchain || 'ETH_TEST5',
+                vaultWalletId 
+            },
+            `dashboard_user_${userId}`,
+            { ipAddress: req.ip, userAgent: req.get('user-agent') }
+        );
+
+        res.status(201).json(operation);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * List operations from dashboard
+ * GET /v1/operations/dashboard
+ */
+export const listOperationsDashboard = async (req, res, next) => {
+    try {
+        const { status, operationType, limit, offset } = req.query;
+
+        const result = await operationService.listOperations({
+            status,
+            operationType,
+            limit: limit ? parseInt(limit) : 50,
+            offset: offset ? parseInt(offset) : 0
+        });
+
+        res.json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Approve operation from dashboard
+ * POST /v1/operations/dashboard/:id/approve
+ */
+export const approveOperationDashboard = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.sub;
+
+        const result = await operationService.approveOperation(
+            id,
+            `dashboard_user_${userId}`,
+            { ipAddress: req.ip, userAgent: req.get('user-agent') },
+            true // Skip maker-checker validation for dashboard
+        );
+
+        res.json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Reject operation from dashboard
+ * POST /v1/operations/dashboard/:id/reject
+ */
+export const rejectOperationDashboard = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const userId = req.user.sub;
+
+        const result = await operationService.rejectOperation(
+            id,
+            `dashboard_user_${userId}`,
+            reason || 'No reason provided',
+            { ipAddress: req.ip, userAgent: req.get('user-agent') }
+        );
+
+        res.json(result);
+    } catch (error) {
+        next(error);
+    }
+};

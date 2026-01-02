@@ -35,9 +35,28 @@ router.get('/keys/my', authenticateJwt, async (req, res, next) => {
 
 router.post('/keys/my', authenticateJwt, async (req, res, next) => {
     try {
+        const { role } = req.body; // MAKER, CHECKER, or VIEWER
+        
+        // Map role to permissions
+        let permissions;
+        switch(role) {
+            case 'MAKER':
+                permissions = ['read', 'write']; // Can create operations
+                break;
+            case 'CHECKER':
+                permissions = ['read', 'admin']; // Can approve operations
+                break;
+            case 'VIEWER':
+                permissions = ['read']; // Read-only
+                break;
+            default:
+                permissions = ['read', 'write']; // Default to MAKER
+        }
+        
         const apiKey = await apiKeyRepository.createApiKey({
             userId: req.user.sub,
-            permissions: ['read', 'write'], // Default for clients
+            permissions,
+            role: role || 'MAKER',
             tenantId: req.user.sub // For now, 1:1 user to tenant
         });
         res.status(201).json(apiKey);

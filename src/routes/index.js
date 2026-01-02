@@ -51,14 +51,14 @@ router.use('/admin', adminRoutes);
 // Mount docs routes (public API documentation)
 router.use('/docs', docsRoutes);
 
-// Mount custody routes
-router.use('/custody', authenticate, custodyRoutes);
+// Mount custody routes (authentication handled per-route)
+router.use('/custody', custodyRoutes);
 
 // Mount asset metadata routes
 router.use('/assets', authenticate, assetRoutes);
 
-// Mount operation routes
-router.use('/operations', authenticate, operationRoutes);
+// Mount operation routes (authentication handled per-route)
+router.use('/operations', operationRoutes);
 
 // Mount vault routes
 router.use('/vaults', authenticate, vaultRoutes);
@@ -66,8 +66,8 @@ router.use('/vaults', authenticate, vaultRoutes);
 // Mount audit routes
 router.use('/audit', authenticate, auditRoutes);
 
-// Mount marketplace routes
-router.use('/marketplace', authenticate, marketplaceRoutes);
+// Mount marketplace routes (authentication handled per-route)
+router.use('/marketplace', marketplaceRoutes);
 
 // Mount other route modules (placeholder for future sprints)
 // router.use('/ledger', authenticate, ledgerRoutes);

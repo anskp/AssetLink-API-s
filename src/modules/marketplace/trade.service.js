@@ -22,7 +22,7 @@ export const BidStatus = {
  * Place a bid on a listing
  */
 export const placeBid = async (listingId, data, buyerId, context = {}) => {
-  const { amount } = data;
+  const { amount, quantity } = data;
   
   if (!amount) {
     throw new BadRequestError('Bid amount is required');
@@ -47,16 +47,21 @@ export const placeBid = async (listingId, data, buyerId, context = {}) => {
     where: { userId: buyerId }
   });
   
-  if (!userBalance || parseFloat(userBalance.balance) < parseFloat(amount)) {
-    throw new BadRequestError('Insufficient balance');
+  const bidQuantity = parseFloat(quantity || '1');
+  const totalBidAmount = parseFloat(amount) * bidQuantity;
+  
+  if (!userBalance || parseFloat(userBalance.balance) < totalBidAmount) {
+    throw new BadRequestError(`Insufficient balance. Required: ${totalBidAmount}, Available: ${userBalance?.balance || 0}`);
   }
   
   // Create bid
   const bid = await prisma.bid.create({
     data: {
       listingId,
+      tenantId: listing.tenantId,
       buyerId,
       amount,
+      quantity: quantity || '1',
       status: BidStatus.PENDING
     }
   });
@@ -65,7 +70,8 @@ export const placeBid = async (listingId, data, buyerId, context = {}) => {
     bidId: bid.id,
     listingId,
     buyerId,
-    amount
+    amount,
+    quantity: bidQuantity
   });
   
   // Log audit event
@@ -73,7 +79,8 @@ export const placeBid = async (listingId, data, buyerId, context = {}) => {
     bidId: bid.id,
     listingId,
     assetId: listing.assetId,
-    amount
+    amount,
+    quantity: bidQuantity
   }, {
     custodyRecordId: listing.custodyRecordId,
     actor: buyerId,
@@ -116,12 +123,15 @@ export const acceptBid = async (bidId, sellerId, context = {}) => {
     throw new BadRequestError(`Cannot accept bid for listing with status ${listing.status}`);
   }
   
+  const bidQuantity = parseFloat(bid.quantity || '1');
+  const totalAmount = parseFloat(bid.amount) * bidQuantity;
+  
   // Verify buyer has sufficient funds
   const buyerBalance = await prisma.userBalance.findUnique({
     where: { userId: bid.buyerId }
   });
   
-  if (!buyerBalance || parseFloat(buyerBalance.balance) < parseFloat(bid.amount)) {
+  if (!buyerBalance || parseFloat(buyerBalance.balance) < totalAmount) {
     throw new BadRequestError('Buyer has insufficient funds');
   }
   
@@ -129,12 +139,13 @@ export const acceptBid = async (bidId, sellerId, context = {}) => {
   // 1. Transfer ownership in off-chain ledger
   // 2. Update buyer balance (decrease)
   // 3. Update seller balance (increase)
-  // 4. Update listing status to SOLD
+  // 4. Update listing status to SOLD (or reduce quantity)
   // 5. Update bid status to ACCEPTED
   
   const result = await prisma.$transaction(async (tx) => {
     // 1. Transfer ownership
-    await tx.ownership.delete({
+    // Reduce seller's ownership
+    const sellerOwnership = await tx.ownership.findUnique({
       where: {
         assetId_ownerId: {
           assetId: listing.assetId,
@@ -143,20 +154,83 @@ export const acceptBid = async (bidId, sellerId, context = {}) => {
       }
     });
     
-    await tx.ownership.create({
-      data: {
-        assetId: listing.assetId,
-        custodyRecordId: listing.custodyRecordId,
-        ownerId: bid.buyerId,
-        quantity: '1' // For now, assuming single token
+    if (!sellerOwnership) {
+      throw new BadRequestError('Seller does not own this asset');
+    }
+    
+    const sellerQuantity = parseFloat(sellerOwnership.quantity);
+    if (sellerQuantity < bidQuantity) {
+      throw new BadRequestError(`Insufficient quantity. Available: ${sellerQuantity}, Required: ${bidQuantity}`);
+    }
+    
+    if (sellerQuantity === bidQuantity) {
+      // Delete seller's ownership if selling all
+      await tx.ownership.delete({
+        where: {
+          assetId_ownerId: {
+            assetId: listing.assetId,
+            ownerId: sellerId
+          }
+        }
+      });
+    } else {
+      // Reduce seller's quantity
+      await tx.ownership.update({
+        where: {
+          assetId_ownerId: {
+            assetId: listing.assetId,
+            ownerId: sellerId
+          }
+        },
+        data: {
+          quantity: (sellerQuantity - bidQuantity).toString()
+        }
+      });
+    }
+    
+    // Create or update buyer's ownership
+    const buyerOwnership = await tx.ownership.findUnique({
+      where: {
+        assetId_ownerId: {
+          assetId: listing.assetId,
+          ownerId: bid.buyerId
+        }
       }
     });
+    
+    if (buyerOwnership) {
+      // Update existing ownership
+      await tx.ownership.update({
+        where: {
+          assetId_ownerId: {
+            assetId: listing.assetId,
+            ownerId: bid.buyerId
+          }
+        },
+        data: {
+          quantity: (parseFloat(buyerOwnership.quantity) + bidQuantity).toString()
+        }
+      });
+    } else {
+      // Create new ownership
+      await tx.ownership.create({
+        data: {
+          assetId: listing.assetId,
+          custodyRecordId: listing.custodyRecordId,
+          tenantId: listing.tenantId,
+          ownerId: bid.buyerId,
+          quantity: bidQuantity.toString(),
+          purchasePrice: bid.amount,
+          currency: listing.currency
+        }
+      });
+    }
     
     // 2. Update buyer balance (decrease)
     await tx.userBalance.update({
       where: { userId: bid.buyerId },
       data: {
-        balance: (parseFloat(buyerBalance.balance) - parseFloat(bid.amount)).toString()
+        balance: (parseFloat(buyerBalance.balance) - totalAmount).toString()
       }
     });
     
@@ -169,24 +243,28 @@ export const acceptBid = async (bidId, sellerId, context = {}) => {
       await tx.userBalance.update({
         where: { userId: sellerId },
         data: {
-          balance: (parseFloat(sellerBalance.balance) + parseFloat(bid.amount)).toString()
+          balance: (parseFloat(sellerBalance.balance) + totalAmount).toString()
         }
       });
     } else {
       await tx.userBalance.create({
         data: {
           userId: sellerId,
-          balance: bid.amount,
+          balance: totalAmount.toString(),
           currency: listing.currency
         }
       });
     }
     
-    // 4. Update listing status to SOLD
+    // 4. Update listing status
+    const newQuantitySold = parseFloat(listing.quantitySold) + bidQuantity;
+    const totalListed = parseFloat(listing.quantityListed);
+    
     const updatedListing = await tx.listing.update({
       where: { id: listing.id },
       data: {
-        status: ListingStatus.SOLD,
+        quantitySold: newQuantitySold.toString(),
+        status: newQuantitySold >= totalListed ? ListingStatus.SOLD : ListingStatus.ACTIVE,
         updatedAt: new Date()
       }
     });
@@ -212,7 +290,8 @@ export const acceptBid = async (bidId, sellerId, context = {}) => {
     assetId: listing.assetId,
     sellerId,
     buyerId: bid.buyerId,
-    amount: bid.amount
+    amount: totalAmount,
+    quantity: bidQuantity
   });
   
   // Log audit event
@@ -222,7 +301,8 @@ export const acceptBid = async (bidId, sellerId, context = {}) => {
     assetId: listing.assetId,
     sellerId,
     buyerId: bid.buyerId,
-    amount: bid.amount
+    amount: totalAmount,
+    quantity: bidQuantity
   }, {
     custodyRecordId: listing.custodyRecordId,
     actor: sellerId,
@@ -233,7 +313,8 @@ export const acceptBid = async (bidId, sellerId, context = {}) => {
     assetId: listing.assetId,
     fromUserId: sellerId,
     toUserId: bid.buyerId,
-    amount: bid.amount
+    amount: totalAmount,
+    quantity: bidQuantity
   }, {
     custodyRecordId: listing.custodyRecordId,
     actor: 'SYSTEM',

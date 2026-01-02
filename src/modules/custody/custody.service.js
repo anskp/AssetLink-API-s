@@ -24,12 +24,12 @@ export const linkAsset = async (assetId, tenantId, createdBy, actor, context = {
         throw ConflictError(`Asset ${assetId} is already in custody`);
     }
 
-    // Create custody record with two-level isolation
+    // Create custody record with two-level isolation (PENDING status - awaiting approval)
     const custodyRecord = await custodyRepository.createCustodyRecord(
         assetId, 
         tenantId, 
         createdBy, 
-        CustodyStatus.LINKED
+        CustodyStatus.PENDING
     );
 
     // Log audit event
@@ -97,6 +97,103 @@ export const validateStateTransition = (currentStatus, newStatus) => {
         );
     }
     return true;
+};
+
+/**
+ * Approve custody link (PENDING -> LINKED)
+ * @param {string} id - Custody record ID
+ * @param {string} tenantId - Platform owner (for authorization)
+ * @param {string} actor - User/API key approving
+ * @param {object} context - Additional context
+ */
+export const approveCustodyLink = async (id, tenantId, actor, context = {}) => {
+    const custodyRecord = await custodyRepository.findById(id);
+    if (!custodyRecord) {
+        throw NotFoundError('Custody record not found');
+    }
+
+    // Verify tenant ownership
+    if (custodyRecord.tenantId !== tenantId) {
+        throw NotFoundError('Custody record not found');
+    }
+
+    // Verify status is PENDING
+    if (custodyRecord.status !== CustodyStatus.PENDING) {
+        throw BadRequestError(`Cannot approve custody record with status ${custodyRecord.status}`);
+    }
+
+    // Update to LINKED status
+    const updated = await custodyRepository.updateStatus(id, CustodyStatus.LINKED, {
+        linkedAt: new Date()
+    });
+
+    // Log audit event
+    await auditService.logEvent('CUSTODY_APPROVED', {
+        assetId: custodyRecord.assetId
+    }, {
+        custodyRecordId: id,
+        actor,
+        ...context
+    });
+
+    logger.info('Custody link approved', { 
+        custodyRecordId: id, 
+        assetId: custodyRecord.assetId,
+        tenantId,
+        actor
+    });
+
+    return enrichCustodyRecord(updated);
+};
+
+/**
+ * Reject custody link (PENDING -> UNLINKED)
+ * @param {string} id - Custody record ID
+ * @param {string} tenantId - Platform owner (for authorization)
+ * @param {string} reason - Rejection reason
+ * @param {string} actor - User/API key rejecting
+ * @param {object} context - Additional context
+ */
+export const rejectCustodyLink = async (id, tenantId, reason, actor, context = {}) => {
+    const custodyRecord = await custodyRepository.findById(id);
+    if (!custodyRecord) {
+        throw NotFoundError('Custody record not found');
+    }
+
+    // Verify tenant ownership
+    if (custodyRecord.tenantId !== tenantId) {
+        throw NotFoundError('Custody record not found');
+    }
+
+    // Verify status is PENDING
+    if (custodyRecord.status !== CustodyStatus.PENDING) {
+        throw BadRequestError(`Cannot reject custody record with status ${custodyRecord.status}`);
+    }
+
+    // Update to UNLINKED status (or delete the record)
+    const updated = await custodyRepository.updateStatus(id, CustodyStatus.UNLINKED, {
+        rejectionReason: reason
+    });
+
+    // Log audit event
+    await auditService.logEvent('CUSTODY_REJECTED', {
+        assetId: custodyRecord.assetId,
+        reason
+    }, {
+        custodyRecordId: id,
+        actor,
+        ...context
+    });
+
+    logger.info('Custody link rejected', { 
+        custodyRecordId: id, 
+        assetId: custodyRecord.assetId,
+        tenantId,
+        actor,
+        reason
+    });
+
+    return enrichCustodyRecord(updated);
 };
 
 /**
@@ -182,6 +279,8 @@ export default {
     getCustodyStatus,
     getCustodyRecordById,
     validateStateTransition,
+    approveCustodyLink,
+    rejectCustodyLink,
     updateCustodyStatus,
     listCustodyRecords,
     getStatistics,

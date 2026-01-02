@@ -160,7 +160,7 @@ export const authenticateJwt = async (req, res, next) => {
 
         next();
     } catch (error) {
-        next(new UnauthorizedError('Invalid or expired access token'));
+        next(UnauthorizedError('Invalid or expired access token'));
     }
 };
 

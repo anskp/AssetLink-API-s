@@ -19,6 +19,7 @@ model ApiKey {
   tenantId      String?
   userId        String?
   user          User?    @relation(fields: [userId], references: [id])
+  role          String   @default("MAKER") // MAKER, CHECKER, VIEWER
   permissions   Json     // Scoped permissions array
   ipWhitelist   Json?    // Optional IP restrictions
   isActive      Boolean  @default(true)

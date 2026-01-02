@@ -114,9 +114,189 @@ export const getStatistics = async (req, res, next) => {
     }
 };
 
+/**
+ * Approve custody link
+ * POST /v1/custody/:id/approve
+ */
+export const approveCustodyLink = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const tenantId = req.auth?.tenantId;
+
+        if (!tenantId) {
+            throw new ValidationError('Tenant ID not found in authentication context');
+        }
+
+        const custodyRecord = await custodyService.approveCustodyLink(
+            id,
+            tenantId,
+            req.auth?.publicKey || 'unknown',
+            {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        );
+
+        res.json(custodyRecord);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Reject custody link
+ * POST /v1/custody/:id/reject
+ */
+export const rejectCustodyLink = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const tenantId = req.auth?.tenantId;
+
+        if (!tenantId) {
+            throw new ValidationError('Tenant ID not found in authentication context');
+        }
+
+        const custodyRecord = await custodyService.rejectCustodyLink(
+            id,
+            tenantId,
+            reason || 'No reason provided',
+            req.auth?.publicKey || 'unknown',
+            {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        );
+
+        res.json(custodyRecord);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * DASHBOARD ENDPOINTS (JWT Authentication)
+ * These endpoints are for dashboard UI use only
+ */
+
+/**
+ * Link asset from dashboard
+ * POST /v1/custody/dashboard/link
+ */
+export const linkAssetDashboard = async (req, res, next) => {
+    try {
+        const { assetId } = req.body;
+
+        if (!assetId) {
+            throw new ValidationError('Asset ID is required', [
+                { field: 'assetId', message: 'Required field' }
+            ]);
+        }
+
+        // For dashboard: user ID is both tenant and creator
+        const userId = req.user.sub;
+
+        const custodyRecord = await custodyService.linkAsset(
+            assetId,
+            userId, // tenantId = user's ID
+            userId, // createdBy = user's ID
+            `dashboard_user_${userId}`,
+            {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        );
+
+        res.status(201).json(custodyRecord);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * List custody records from dashboard
+ * GET /v1/custody/dashboard
+ */
+export const listCustodyRecordsDashboard = async (req, res, next) => {
+    try {
+        const { status, limit, offset } = req.query;
+        const userId = req.user.sub;
+
+        const result = await custodyService.listCustodyRecords({
+            tenantId: userId,
+            endUserId: userId, // Show only user's own records
+            status,
+            limit: limit ? parseInt(limit) : undefined,
+            offset: offset ? parseInt(offset) : undefined
+        });
+
+        res.json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Approve custody link from dashboard
+ * POST /v1/custody/dashboard/:id/approve
+ */
+export const approveCustodyLinkDashboard = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.sub;
+
+        const custodyRecord = await custodyService.approveCustodyLink(
+            id,
+            userId, // tenantId
+            `dashboard_user_${userId}`,
+            {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        );
+
+        res.json(custodyRecord);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Reject custody link from dashboard
+ * POST /v1/custody/dashboard/:id/reject
+ */
+export const rejectCustodyLinkDashboard = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const userId = req.user.sub;
+
+        const custodyRecord = await custodyService.rejectCustodyLink(
+            id,
+            userId, // tenantId
+            reason || 'No reason provided',
+            `dashboard_user_${userId}`,
+            {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        );
+
+        res.json(custodyRecord);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export default {
     linkAsset,
     getCustodyStatus,
     listCustodyRecords,
-    getStatistics
+    getStatistics,
+    approveCustodyLink,
+    rejectCustodyLink,
+    linkAssetDashboard,
+    listCustodyRecordsDashboard,
+    approveCustodyLinkDashboard,
+    rejectCustodyLinkDashboard
 };

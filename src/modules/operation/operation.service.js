@@ -139,14 +139,14 @@ export const initiateMintOperation = async (data, actor, context = {}) => {
 /**
  * Approve an operation (CHECKER role)
  */
-export const approveOperation = async (operationId, actor, context = {}) => {
+export const approveOperation = async (operationId, actor, context = {}, skipMakerCheckerValidation = false) => {
     const operation = await operationRepository.findById(operationId);
     if (!operation) {
         throw NotFoundError(`Operation ${operationId} not found`);
     }
 
-    // Basic Maker-Checker segregation
-    if (operation.initiatedBy === actor) {
+    // Basic Maker-Checker segregation (skip for dashboard operations)
+    if (!skipMakerCheckerValidation && operation.initiatedBy === actor) {
         throw ForbiddenError('Maker cannot approve their own operation');
     }
 

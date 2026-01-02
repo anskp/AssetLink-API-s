@@ -22,7 +22,7 @@ export const ListingStatus = {
  * Create a new listing
  */
 export const createListing = async (data, sellerId, context = {}) => {
-  const { assetId, price, currency, expiryDate } = data;
+  const { assetId, price, currency, expiryDate, quantity } = data;
   
   // Validate required parameters
   const missingFields = [];
@@ -44,8 +44,14 @@ export const createListing = async (data, sellerId, context = {}) => {
     throw new NotFoundError(`Asset ${assetId} not found`);
   }
   
-  // Verify user owns the token in off-chain ownership ledger
-  const ownership = await prisma.ownership.findUnique({
+  // Verify custody record is in MINTED status
+  if (custodyRecord.status !== 'MINTED') {
+    throw new BadRequestError(`Asset must be minted before listing. Current status: ${custodyRecord.status}`);
+  }
+  
+  // For dashboard users, we need to create an ownership record if it doesn't exist
+  // Check if ownership exists
+  let ownership = await prisma.ownership.findUnique({
     where: {
       assetId_ownerId: {
         assetId,
@@ -54,8 +60,33 @@ export const createListing = async (data, sellerId, context = {}) => {
     }
   });
   
+  // If no ownership exists, create one (platform owner owns the minted token initially)
   if (!ownership) {
-    throw new ForbiddenError(`User ${sellerId} does not own asset ${assetId}`);
+    ownership = await prisma.ownership.create({
+      data: {
+        assetId,
+        custodyRecordId: custodyRecord.id,
+        tenantId: custodyRecord.tenantId,
+        ownerId: sellerId,
+        quantity: quantity || '1',
+        purchasePrice: '0', // Initial minting, no purchase price
+        currency: currency || 'USD'
+      }
+    });
+    
+    logger.info('Created initial ownership record for listing', {
+      assetId,
+      ownerId: sellerId,
+      quantity: quantity || '1'
+    });
+  }
+  
+  // Verify user has enough quantity to list
+  const availableQuantity = parseFloat(ownership.quantity);
+  const listingQuantity = parseFloat(quantity || '1');
+  
+  if (availableQuantity < listingQuantity) {
+    throw new BadRequestError(`Insufficient quantity. Available: ${availableQuantity}, Requested: ${listingQuantity}`);
   }
   
   // Create listing
@@ -63,9 +94,12 @@ export const createListing = async (data, sellerId, context = {}) => {
     data: {
       assetId,
       custodyRecordId: custodyRecord.id,
+      tenantId: custodyRecord.tenantId,
       sellerId,
       price,
       currency,
+      quantityListed: quantity || '1',
+      quantitySold: '0',
       status: ListingStatus.ACTIVE,
       expiryDate: new Date(expiryDate)
     }
