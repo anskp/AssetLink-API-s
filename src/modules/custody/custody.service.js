@@ -128,11 +128,54 @@ export const approveCustodyLink = async (id, tenantId, actor, context = {}) => {
 
     // Create a new Fireblocks vault for this asset
     const vaultName = `${custodyRecord.assetId.replace(/[^a-zA-Z0-9]/g, '_')}_VAULT_${Date.now()}`;
+    
+    logger.info('Creating Fireblocks vault for custody approval', {
+        custodyRecordId: id,
+        assetId: custodyRecord.assetId,
+        vaultName
+    });
+    
     const vaultResult = await fireblocksService.createUserVault(vaultName, id);
     const fireblocksVaultId = vaultResult.vaultId;
 
-    // Get wallet address for ETH_TEST5
+    logger.info('Fireblocks vault created, getting wallet address', {
+        vaultId: fireblocksVaultId,
+        blockchain: 'ETH_TEST5'
+    });
+
+    // Get wallet address for ETH_TEST5 (this also creates the asset in the vault)
     const walletAddress = await fireblocksService.getWalletAddress(fireblocksVaultId, 'ETH_TEST5');
+
+    logger.info('Wallet address obtained', {
+        vaultId: fireblocksVaultId,
+        walletAddress,
+        blockchain: 'ETH_TEST5'
+    });
+
+    // Transfer initial gas from vault 88 to the new vault
+    logger.info('Transferring initial gas to new vault', {
+        fromVault: '88',
+        toVault: fireblocksVaultId,
+        amount: '0.002',
+        blockchain: 'ETH_TEST5'
+    });
+
+    try {
+        const vaultFireblocksService = await import('../vault/fireblocks.service.js');
+        await vaultFireblocksService.transferTokens(
+            '88',              // Gas vault
+            fireblocksVaultId, // New vault
+            'ETH_TEST5',       // Asset
+            0.002              // Amount (enough for several transactions)
+        );
+        logger.info('Initial gas transfer completed', { vaultId: fireblocksVaultId });
+    } catch (gasError) {
+        logger.warn('Failed to transfer initial gas, vault may not have enough gas for minting', {
+            vaultId: fireblocksVaultId,
+            error: gasError.message
+        });
+        // Don't fail the approval, just warn
+    }
 
     // Create a VaultWallet record in the database to track this vault with address
     const vaultWalletRecord = await prisma.vaultWallet.create({
@@ -143,6 +186,11 @@ export const approveCustodyLink = async (id, tenantId, actor, context = {}) => {
             vaultType: 'CUSTODY',
             isActive: true
         }
+    });
+
+    logger.info('VaultWallet record created in database', {
+        vaultWalletId: vaultWalletRecord.id,
+        fireblocksId: fireblocksVaultId
     });
 
     // Update to LINKED status with vault information

@@ -403,7 +403,7 @@ export const issueToken = async (vaultId, tokenConfig) => {
       feeLevel: 'MEDIUM'
     };
 
-    logger.info('Creating token on Fireblocks (Manual API)...', { symbol, vaultId });
+    logger.info('Creating token on Fireblocks (Manual API)...', { symbol, vaultId, payload });
 
     // Use manual HTTPS request like in the copym-mono project
     const result = await makeFireblocksRequest('/v1/tokenization/tokens', 'POST', payload);
@@ -414,7 +414,17 @@ export const issueToken = async (vaultId, tokenConfig) => {
     console.log(JSON.stringify(result, null, 2));
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-    logger.info('Token issuance initiated', { tokenLinkId: result.id, symbol, vaultId });
+    // Check if the response indicates immediate failure
+    if (result.status === 'FAILED') {
+      logger.error('Token issuance failed immediately', {
+        tokenLinkId: result.id,
+        symbol,
+        vaultId,
+        result
+      });
+    }
+
+    logger.info('Token issuance initiated', { tokenLinkId: result.id, symbol, vaultId, status: result.status });
 
     return {
       tokenLinkId: result.id,

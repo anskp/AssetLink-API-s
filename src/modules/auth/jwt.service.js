@@ -5,7 +5,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-supersure-jwt-secret-change-i
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-supersure-refresh-secret-change-in-production';
 
 export const signAccessToken = (payload) => {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' }); // Increased from 15m to 24h
 };
 
 export const signRefreshToken = (payload) => {
