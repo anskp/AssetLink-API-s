@@ -122,25 +122,53 @@ export const approveCustodyLink = async (id, tenantId, actor, context = {}) => {
         throw BadRequestError(`Cannot approve custody record with status ${custodyRecord.status}`);
     }
 
-    // Update to LINKED status
+    // Import required services
+    const fireblocksService = await import('../vault/fireblocks.service.js');
+    const prisma = (await import('../../config/db.js')).default;
+
+    // Create a new Fireblocks vault for this asset
+    const vaultName = `${custodyRecord.assetId.replace(/[^a-zA-Z0-9]/g, '_')}_VAULT_${Date.now()}`;
+    const vaultResult = await fireblocksService.createUserVault(vaultName, id);
+    const fireblocksVaultId = vaultResult.vaultId;
+
+    // Get wallet address for ETH_TEST5
+    const walletAddress = await fireblocksService.getWalletAddress(fireblocksVaultId, 'ETH_TEST5');
+
+    // Create a VaultWallet record in the database to track this vault with address
+    const vaultWalletRecord = await prisma.vaultWallet.create({
+        data: {
+            fireblocksId: fireblocksVaultId,
+            blockchain: 'ETH_TEST5', // Default blockchain
+            address: walletAddress, // Store the wallet address
+            vaultType: 'CUSTODY',
+            isActive: true
+        }
+    });
+
+    // Update to LINKED status with vault information
     const updated = await custodyRepository.updateStatus(id, CustodyStatus.LINKED, {
-        linkedAt: new Date()
+        linkedAt: new Date(),
+        vaultWalletId: vaultWalletRecord.id
     });
 
     // Log audit event
     await auditService.logEvent('CUSTODY_APPROVED', {
-        assetId: custodyRecord.assetId
+        assetId: custodyRecord.assetId,
+        vaultId: fireblocksVaultId,
+        walletAddress: walletAddress
     }, {
         custodyRecordId: id,
         actor,
         ...context
     });
 
-    logger.info('Custody link approved', { 
+    logger.info('Custody link approved with Fireblocks vault', { 
         custodyRecordId: id, 
         assetId: custodyRecord.assetId,
         tenantId,
-        actor
+        actor,
+        vaultId: fireblocksVaultId,
+        walletAddress
     });
 
     return enrichCustodyRecord(updated);

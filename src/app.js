@@ -43,13 +43,19 @@ app.use(cors({
     credentials: true
 }));
 
-// Rate limiting
+// Rate limiting (more lenient for development)
 const limiter = rateLimit({
     windowMs: config.rateLimit.windowMs,
     max: config.rateLimit.maxRequests,
     message: 'Too many requests from this IP, please try again later',
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    // Skip rate limiting for localhost in development
+    skip: (req) => {
+        const isDevelopment = process.env.NODE_ENV !== 'production';
+        const isLocalhost = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+        return isDevelopment && isLocalhost;
+    }
 });
 app.use('/v1/', limiter);
 

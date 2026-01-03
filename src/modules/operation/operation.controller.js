@@ -177,8 +177,10 @@ export const initiateMintOperationDashboard = async (req, res, next) => {
 export const listOperationsDashboard = async (req, res, next) => {
     try {
         const { status, operationType, limit, offset } = req.query;
+        const userId = req.user.sub;
 
         const result = await operationService.listOperations({
+            tenantId: userId, // Filter by user's tenant ID
             status,
             operationType,
             limit: limit ? parseInt(limit) : 50,

@@ -73,12 +73,19 @@ export const updateStatus = async (id, status, updates = {}) => {
  * List operations with filters
  */
 export const listOperations = async (filters = {}) => {
-    const { status, operationType, custodyRecordId, limit = 50, offset = 0 } = filters;
+    const { status, operationType, custodyRecordId, tenantId, limit = 50, offset = 0 } = filters;
 
     const where = {};
     if (status) where.status = status;
     if (operationType) where.operationType = operationType;
     if (custodyRecordId) where.custodyRecordId = custodyRecordId;
+    
+    // Filter by tenantId through custodyRecord relation
+    if (tenantId) {
+        where.custodyRecord = {
+            tenantId: tenantId
+        };
+    }
 
     const [operations, total] = await Promise.all([
         prisma.custodyOperation.findMany({
@@ -87,7 +94,9 @@ export const listOperations = async (filters = {}) => {
                 custodyRecord: {
                     select: {
                         assetId: true,
-                        status: true
+                        status: true,
+                        tenantId: true,
+                        createdBy: true
                     }
                 }
             },
