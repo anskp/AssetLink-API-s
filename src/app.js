@@ -34,9 +34,13 @@ app.use(helmet({
 const allowedOrigins = [...config.corsOrigins, 'http://localhost:5173', 'http://localhost:5174'];
 app.use(cors({
     origin: (origin, callback) => {
+        // Log for debugging
+        if (origin) logger.debug(`CORS Request from: ${origin}`, { allowed: allowedOrigins.includes(origin) });
+
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
+            logger.warn(`CORS Blocked: Origin ${origin} not in allowed list`, { allowedOrigins });
             callback(new Error('Not allowed by CORS'));
         }
     },

@@ -40,7 +40,8 @@ export const linkAsset = async (req, res, next) => {
             {
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent')
-            }
+            },
+            req.body // Pass the full body as metadata
         );
 
         res.status(201).json(custodyRecord);
@@ -204,7 +205,8 @@ export const linkAssetDashboard = async (req, res, next) => {
             {
                 ipAddress: req.ip,
                 userAgent: req.get('user-agent')
-            }
+            },
+            req.body // Pass full body as metadata
         );
 
         res.status(201).json(custodyRecord);
@@ -219,12 +221,12 @@ export const linkAssetDashboard = async (req, res, next) => {
  */
 export const listCustodyRecordsDashboard = async (req, res, next) => {
     try {
-        const { status, limit, offset } = req.query;
+        const { status, limit, offset, scope } = req.query;
         const userId = req.user.sub;
 
         const result = await custodyService.listCustodyRecords({
             tenantId: userId,
-            endUserId: userId, // Show only user's own records
+            endUserId: scope === 'all' ? null : userId, // Show all if scope=all, otherwise just own
             status,
             limit: limit ? parseInt(limit) : undefined,
             offset: offset ? parseInt(offset) : undefined

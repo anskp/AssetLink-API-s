@@ -1,7 +1,7 @@
 // AssetLink Premium Custody Dashboard
 // API Configuration
 const API_BASE = 'http://localhost:3000/v1';
-const API_KEY = 'ak_daa454e75c3a0ad934eb054c886fcdc1';
+const API_KEY = 'ak_c909d5a9253acd9e54ef917f66eedf99'; // MAKER Key
 
 // State
 let currentView = 'overview';
@@ -23,14 +23,14 @@ function initializeRoleSwitcher() {
     roleSelect.value = currentRole;
     roleSelect.addEventListener('change', (e) => {
         currentRole = e.target.value;
-        
+
         // Update user ID based on role
         if (currentRole === 'investor') {
             currentUserId = 'user-456'; // Investor user
         } else {
             currentUserId = 'user-123'; // Issuer user
         }
-        
+
         updateUIForRole();
         // Switch to appropriate view for the role
         const defaultViews = {
@@ -97,7 +97,8 @@ function switchView(view) {
         'portfolio': 'Institutional Portfolio',
         'approvals': 'Governance Approval Queue',
         'audit': 'Immutable Audit Trail',
-        'api-keys': 'Platform API Infrastructure'
+        'api-keys': 'Platform API Infrastructure',
+        'docs': 'External Integration Guide'
     };
     const titleEl = document.getElementById('page-title');
     if (titleEl) titleEl.textContent = titles[view] || 'Dashboard';
@@ -129,8 +130,8 @@ async function apiCall(endpoint, method = 'GET', body = null) {
         'X-SIGNATURE': 'dummy_signature_for_testing'
     };
 
-    // Role-based key override for simulation
-    if (currentRole === 'checker') headers['X-API-KEY'] = API_KEY + '_CHECKER';
+    // Role-based key override for simulation (using validated active keys)
+    if (currentRole === 'checker') headers['X-API-KEY'] = 'ak_0f6bf9ab66a61cd598e709b65357856d';
     if (currentRole === 'investor') headers['X-API-KEY'] = API_KEY + '_INVESTOR';
 
     const options = { method, headers };
@@ -256,7 +257,7 @@ async function loadMarketplace() {
 
     // Get active marketplace listings
     const data = await apiCall('/marketplace/listings?status=ACTIVE');
-    
+
     if (!data || !data.data || data.data.length === 0) {
         container.innerHTML = '<div class="empty-state">No tokens available for purchase</div>';
         return;
@@ -265,7 +266,7 @@ async function loadMarketplace() {
     container.innerHTML = data.data.map(listing => {
         const asset = listing.asset || {};
         const metadata = asset.assetMetadata || {};
-        
+
         return `
         <div class="market-card">
             <div class="market-header">
@@ -309,7 +310,7 @@ async function loadPortfolio() {
 
     // Get user's owned assets
     const data = await apiCall(`/marketplace/portfolio/${currentUserId}`);
-    
+
     if (!data || !data.data || data.data.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -653,7 +654,7 @@ function showSuccess(m) { alert('✅ ' + m); }
 function showListModal(assetId, custodyRecordId) {
     const modal = document.getElementById('list-token-modal');
     if (!modal) return;
-    
+
     document.getElementById('list-asset-id').value = assetId;
     document.getElementById('list-custody-id').value = custodyRecordId;
     modal.classList.add('active');
@@ -668,18 +669,18 @@ async function confirmListToken() {
     const custodyRecordId = document.getElementById('list-custody-id').value;
     const price = document.getElementById('list-price-input').value;
     const expiryDays = document.getElementById('list-expiry-input').value || 30;
-    
+
     if (!price || parseFloat(price) <= 0) {
         return showError('Please enter a valid price');
     }
-    
+
     const btn = document.getElementById('confirm-list-btn');
     btn.disabled = true;
     btn.innerHTML = 'Creating Listing...';
-    
+
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + parseInt(expiryDays));
-    
+
     const result = await apiCall('/marketplace/listings', 'POST', {
         assetId,
         custodyRecordId,
@@ -688,14 +689,14 @@ async function confirmListToken() {
         expiryDate: expiryDate.toISOString(),
         sellerId: currentUserId
     });
-    
+
     if (result && result.success) {
         showSuccess('Token listed on marketplace!');
         closeListModal();
         loadPortfolio();
         loadMarketplace();
     }
-    
+
     btn.disabled = false;
     btn.innerHTML = 'Create Listing';
 }
@@ -703,7 +704,7 @@ async function confirmListToken() {
 function showBidModal(listingId, currentPrice, assetId) {
     const modal = document.getElementById('bid-modal');
     if (!modal) return;
-    
+
     document.getElementById('bid-listing-id').value = listingId;
     document.getElementById('bid-asset-name').textContent = assetId;
     document.getElementById('bid-current-price').textContent = `$${parseFloat(currentPrice).toLocaleString()}`;
@@ -718,26 +719,26 @@ function closeBidModal() {
 async function confirmBid() {
     const listingId = document.getElementById('bid-listing-id').value;
     const amount = document.getElementById('bid-amount-input').value;
-    
+
     if (!amount || parseFloat(amount) <= 0) {
         return showError('Please enter a valid bid amount');
     }
-    
+
     const btn = document.getElementById('confirm-bid-btn');
     btn.disabled = true;
     btn.innerHTML = 'Placing Bid...';
-    
+
     const result = await apiCall(`/marketplace/listings/${listingId}/bids`, 'POST', {
         amount,
         buyerId: currentUserId
     });
-    
+
     if (result && result.success) {
         showSuccess('Bid placed successfully! Waiting for seller approval.');
         closeBidModal();
         loadMarketplace();
     }
-    
+
     btn.disabled = false;
     btn.innerHTML = 'Place Bid';
 }
@@ -746,18 +747,18 @@ async function confirmBid() {
 async function loadMyListings() {
     const container = document.getElementById('my-listings-container');
     if (!container) return;
-    
+
     const data = await apiCall(`/marketplace/listings?sellerId=${currentUserId}`);
-    
+
     if (!data || !data.data || data.data.length === 0) {
         container.innerHTML = '<div class="empty-state">No active listings</div>';
         return;
     }
-    
+
     container.innerHTML = data.data.map(listing => {
         const bids = listing.bids || [];
         const highestBid = bids.length > 0 ? Math.max(...bids.map(b => parseFloat(b.amount))) : 0;
-        
+
         return `
         <div class="listing-card">
             <div class="listing-header">
@@ -792,10 +793,10 @@ async function loadMyListings() {
 async function showBidsModal(listingId) {
     const modal = document.getElementById('bids-modal');
     if (!modal) return;
-    
+
     const data = await apiCall(`/marketplace/listings/${listingId}/bids`);
     const container = document.getElementById('bids-list');
-    
+
     if (!data || !data.data || data.data.length === 0) {
         container.innerHTML = '<div class="empty-state">No bids yet</div>';
     } else {
@@ -816,7 +817,7 @@ async function showBidsModal(listingId) {
             </div>
         `).join('');
     }
-    
+
     modal.classList.add('active');
 }
 
@@ -826,11 +827,11 @@ function closeBidsModal() {
 
 async function acceptBid(bidId) {
     if (!confirm('Accept this bid? This will transfer ownership immediately.')) return;
-    
+
     const result = await apiCall(`/marketplace/bids/${bidId}/accept`, 'POST', {
         sellerId: currentUserId
     });
-    
+
     if (result && result.success) {
         showSuccess('Bid accepted! Ownership transferred and payment settled.');
         closeBidsModal();

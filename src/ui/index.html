@@ -80,6 +80,10 @@
                         <span class="icon">🔑</span>
                         <span>Infrastructure Keys</span>
                     </a>
+                    <a href="#" class="nav-item" data-view="docs">
+                        <span class="icon">📖</span>
+                        <span>Connection Guide</span>
+                    </a>
                 </div>
             </nav>
 
@@ -250,7 +254,7 @@
                         </table>
                     </div>
                 </div>
-                
+
                 <!-- My Listings Section -->
                 <div class="section">
                     <div class="section-header">
@@ -310,6 +314,67 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Connection Guide View -->
+            <div id="docs-view" class="view">
+                <div class="section glass">
+                    <div class="section-header">
+                        <h3>Integration Guide</h3>
+                    </div>
+                    <div class="doc-content" style="padding: 1.5rem; color: var(--text-secondary); line-height: 1.6;">
+                        <h4 style="color: var(--text-primary); margin-bottom: 1rem;">1. Base URL Configuration</h4>
+                        <p>For all local integrations, use the following base URL:</p>
+                        <div class="code-block glass"
+                            style="margin: 1rem 0; padding: 1rem; border-radius: 8px; background: rgba(0,0,0,0.2); font-family: monospace;">
+                            http://localhost:3000/v1
+                        </div>
+
+                        <h4 style="color: var(--text-primary); margin: 1.5rem 0 1rem;">2. Required Authentication
+                            Headers</h4>
+                        <table class="table" style="margin-bottom: 1.5rem;">
+                            <thead>
+                                <tr>
+                                    <th>Header</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>x-api-key</code></td>
+                                    <td>Your Public Infrastructure Key</td>
+                                </tr>
+                                <tr>
+                                    <td><code>x-signature</code></td>
+                                    <td>HMAC-SHA256 signature of the request</td>
+                                </tr>
+                                <tr>
+                                    <td><code>x-timestamp</code></td>
+                                    <td>Current Unix timestamp (seconds)</td>
+                                </tr>
+                                <tr>
+                                    <td><code>x-user-id</code></td>
+                                    <td>End-user identifier (Required for mutations)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <h4 style="color: var(--text-primary); margin: 1.5rem 0 1rem;">3. Signature Construction</h4>
+                        <p>The signature is an HMAC-SHA256 hash created using your <strong>Secret Key</strong>.</p>
+                        <p>Payload template: <code>METHOD + PATH + TIMESTAMP + BODY_STRING</code></p>
+                        <p><em>Example Path:</em> <code>/v1/custody/link</code> (Must include /v1 prefix)</p>
+
+                        <h4 style="color: var(--text-primary); margin: 1.5rem 0 1rem;">4. Local Express.js Integration
+                            (Port 5000)</h4>
+                        <p>If your project is running on port 5000, it can communicate directly with AssetLink on port
+                            3000. No proxy or server-side CORS setup is needed for backend-to-backend calls.</p>
+
+                        <div style="margin-top: 2rem;">
+                            <a href="/v1/docs/openapi.yaml" class="btn btn-secondary btn-sm" target="_blank">Download
+                                OpenAPI Spec</a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -444,7 +509,8 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeListModal()">Cancel</button>
-                <button class="btn btn-primary" id="confirm-list-btn" onclick="confirmListToken()">Create Listing</button>
+                <button class="btn btn-primary" id="confirm-list-btn" onclick="confirmListToken()">Create
+                    Listing</button>
             </div>
         </div>
     </div>

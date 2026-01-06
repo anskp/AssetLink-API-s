@@ -23,7 +23,7 @@ async function prepareTests() {
     const timestamp = Math.floor(Date.now() / 1000).toString();
 
     // 1. Link Asset (Maker)
-    const linkPath = '/custody/link';
+    const linkPath = '/v1/custody/link';
     const linkBody = {
         assetId: `TEST_ASSET_${Date.now()}`,
         assetType: 'WATCH',
@@ -36,7 +36,7 @@ async function prepareTests() {
     const linkSignature = generateSignature('POST', linkPath, timestamp, linkBody, MAKER.secretKey);
 
     console.log('\n--- 1. LINK ASSET (MAKER) ---');
-    console.log(`curl -X POST "${API_BASE_URL}${linkPath}" \\`);
+    console.log(`curl -X POST "http://localhost:3000${linkPath}" \\`);
     console.log(`  -H "Content-Type: application/json" \\`);
     console.log(`  -H "x-api-key: ${MAKER.publicKey}" \\`);
     console.log(`  -H "x-signature: ${linkSignature}" \\`);
@@ -50,11 +50,11 @@ async function prepareTests() {
 
     // Example for a hypothetical ID
     const sampleId = '{id}';
-    const approvePath = `/custody/${sampleId}/approve`;
+    const approvePath = `/v1/custody/${sampleId}/approve`;
     const approveBody = {}; // Empty body usually
     const approveSignature = generateSignature('POST', approvePath, timestamp, approveBody, CHECKER.secretKey);
 
-    console.log(`curl -X POST "${API_BASE_URL}/custody/{id}/approve" \\`);
+    console.log(`curl -X POST "http://localhost:3000${approvePath}" \\`);
     console.log(`  -H "Content-Type: application/json" \\`);
     console.log(`  -H "x-api-key: ${CHECKER.publicKey}" \\`);
     console.log(`  -H "x-signature: ${approveSignature}" \\`); // This signature will change based on the actual ID

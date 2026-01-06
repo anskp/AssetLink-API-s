@@ -12,31 +12,43 @@ info:
     ## Authentication
     
     ### JWT Authentication (User Access)
-    For dashboard and user operations, use JWT tokens:
+    For dashboard and user operations, use JWT tokens in the `Authorization` header:
     ```
     Authorization: Bearer YOUR_ACCESS_TOKEN
     ```
     
-    ### API Key Authentication (Programmatic Access)
-    For API integrations, use HMAC-SHA256 signature authentication:
-    ```
-    X-API-KEY: your_public_key
-    X-SIGNATURE: hmac_signature
-    X-TIMESTAMP: unix_timestamp
-    X-USER-ID: end_user_identifier (optional for listing, required for mutations)
-    ```
+    ### API Key Authentication (External Project Access)
+    For connecting external projects (like your own backend), use HMAC-SHA256 signature authentication. 
     
-    **Two-Level Isolation:**
-    - `X-API-KEY`: Identifies the platform owner (tenant)
-    - `X-USER-ID`: Identifies the end user (issuer/investor)
+    **Required Headers:**
+    - `x-api-key`: Your Public API Key (e.g., `ak_...`)
+    - `x-signature`: HMAC-SHA256 hash of the payload
+    - `x-timestamp`: Current Unix timestamp in seconds
+    - `x-user-id`: Required for mutation requests (POST/PATCH/DELETE) to identify your end-user.
     
-    Platform owners see ALL activity. End users see only their own data.
+    **Two-Level Isolation Model:**
+    - **Platform Level**: Identified by `x-api-key`. You have full visibility into your platform's data.
+    - **End-User Level**: Identified by `x-user-id`. Data is isolated so end-users only see their own records.
     
-    Signature payload: `METHOD + PATH + TIMESTAMP + BODY`
+    **Signature Calculation:**
+    The signature is an HMAC-SHA256 hash created using your **Secret Key** (e.g., `sk_...`).
+    The payload to sign is: `METHOD + PATH + TIMESTAMP + BODY_STRING`
     
-    ## Base URL
-    - Development: `http://localhost:3000/v1`
-    - Production: `https://api.assetlink.com/v1`
+    Example Payload: `POST+/v1/custody/link+1767700704+{"assetId":"test-001"}`
+    
+    ## Connection Details
+    
+    ### Base URL Strategy
+    Always include the version prefix `/v1` in your base URL:
+    - **Local Development**: `http://localhost:3000/v1`
+    - **Production**: `https://api.assetlink.com/v1`
+    
+    ### Local Testing Tips
+    If you are running AssetLink locally (port 3000) and connecting from another local project (e.g., port 5000):
+    1. Keep the AssetLink server running.
+    2. Use `http://localhost:3000/v1` as the base URL.
+    3. Ensure both projects share the same network (localhost).
+    4. If the other project is a frontend browser app, ensure port 5000 is added to `CORS_ORIGINS` in AssetLink's `.env`.
     
   version: 1.0.0
   contact:

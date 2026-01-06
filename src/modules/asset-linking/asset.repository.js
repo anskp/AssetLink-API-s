@@ -11,14 +11,14 @@ import { AssetType } from '../../enums/assetType.js';
  */
 export const createAssetMetadata = async (custodyRecordId, data) => {
     const {
-        assetType,
-        assetName,
+        assetType = AssetType.OTHER,
+        assetName = 'Unnamed Asset',
         description,
         manufacturer,
         model,
         serialNumber,
         yearManufactured,
-        estimatedValue,
+        estimatedValue = '0',
         currency = 'USD',
         valuationDate,
         valuationMethod,

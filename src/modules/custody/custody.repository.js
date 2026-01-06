@@ -16,7 +16,7 @@ import { CustodyStatus } from '../../enums/custodyStatus.js';
 export const createCustodyRecord = async (assetId, tenantId, createdBy, status = CustodyStatus.LINKED) => {
     return await prisma.custodyRecord.create({
         data: {
-            assetId,
+            assetId: String(assetId),
             tenantId,
             createdBy,
             status,
@@ -30,7 +30,7 @@ export const createCustodyRecord = async (assetId, tenantId, createdBy, status =
  */
 export const findByAssetId = async (assetId) => {
     return await prisma.custodyRecord.findUnique({
-        where: { assetId },
+        where: { assetId: String(assetId) },
         include: {
             vaultWallet: true
         }

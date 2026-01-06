@@ -87,7 +87,7 @@ export const authenticate = async (req, res, next) => {
             const isValid = await verifySignatureWithSecret(
                 signature,
                 req.method,
-                req.path,
+                req.originalUrl.split('?')[0], // Use full path for signature verification
                 timestamp,
                 req.body,
                 apiKey.secretKey

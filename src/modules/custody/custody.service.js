@@ -9,15 +9,7 @@ import logger from '../../utils/logger.js';
  * Business logic for custody operations
  */
 
-/**
- * Link asset to custody with two-level isolation
- * @param {string} assetId - Asset identifier
- * @param {string} tenantId - Platform owner (from API key)
- * @param {string} createdBy - End user who created the asset (from X-USER-ID header)
- * @param {string} actor - API key used
- * @param {object} context - Additional context
- */
-export const linkAsset = async (assetId, tenantId, createdBy, actor, context = {}) => {
+export const linkAsset = async (assetId, tenantId, createdBy, actor, context = {}, metadata = {}) => {
     // Check if asset already exists
     const existing = await custodyRepository.findByAssetId(assetId);
     if (existing) {
@@ -26,25 +18,31 @@ export const linkAsset = async (assetId, tenantId, createdBy, actor, context = {
 
     // Create custody record with two-level isolation (PENDING status - awaiting approval)
     const custodyRecord = await custodyRepository.createCustodyRecord(
-        assetId, 
-        tenantId, 
-        createdBy, 
+        assetId,
+        tenantId,
+        createdBy,
         CustodyStatus.PENDING
     );
+
+    // Save metadata if provided
+    if (Object.keys(metadata).length > 0) {
+        const assetRepository = (await import('../asset-linking/asset.repository.js')).default;
+        await assetRepository.createAssetMetadata(custodyRecord.id, metadata);
+    }
 
     // Log audit event
     await auditService.logAssetLinked(
         custodyRecord.id,
         assetId,
         actor,
-        { ...context, tenantId, createdBy }
+        { ...context, tenantId, createdBy, metadata }
     );
 
-    logger.info('Asset linked to custody', { 
-        assetId, 
-        tenantId, 
-        createdBy, 
-        custodyRecordId: custodyRecord.id 
+    logger.info('Asset linked to custody with metadata', {
+        assetId,
+        tenantId,
+        createdBy,
+        custodyRecordId: custodyRecord.id
     });
 
     return custodyRecord;
@@ -128,13 +126,13 @@ export const approveCustodyLink = async (id, tenantId, actor, context = {}) => {
 
     // Create a new Fireblocks vault for this asset
     const vaultName = `${custodyRecord.assetId.replace(/[^a-zA-Z0-9]/g, '_')}_VAULT_${Date.now()}`;
-    
+
     logger.info('Creating Fireblocks vault for custody approval', {
         custodyRecordId: id,
         assetId: custodyRecord.assetId,
         vaultName
     });
-    
+
     const vaultResult = await fireblocksService.createUserVault(vaultName, id);
     const fireblocksVaultId = vaultResult.vaultId;
 
@@ -210,8 +208,8 @@ export const approveCustodyLink = async (id, tenantId, actor, context = {}) => {
         ...context
     });
 
-    logger.info('Custody link approved with Fireblocks vault', { 
-        custodyRecordId: id, 
+    logger.info('Custody link approved with Fireblocks vault', {
+        custodyRecordId: id,
         assetId: custodyRecord.assetId,
         tenantId,
         actor,
@@ -261,8 +259,8 @@ export const rejectCustodyLink = async (id, tenantId, reason, actor, context = {
         ...context
     });
 
-    logger.info('Custody link rejected', { 
-        custodyRecordId: id, 
+    logger.info('Custody link rejected', {
+        custodyRecordId: id,
         assetId: custodyRecord.assetId,
         tenantId,
         actor,
