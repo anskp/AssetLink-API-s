@@ -141,7 +141,7 @@ export const updateUserStatus = async (req, res, next) => {
         const { status } = req.body;
 
         if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
-            throw new BadRequestError('Invalid status. Must be ACTIVE or SUSPENDED');
+            throw BadRequestError('Invalid status. Must be ACTIVE or SUSPENDED');
         }
 
         const user = await prisma.user.update({

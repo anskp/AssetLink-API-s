@@ -13,33 +13,33 @@ export const adminLogin = async (req, res, next) => {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            throw new BadRequestError('Email and password are required');
+            throw BadRequestError('Email and password are required');
         }
 
         // Find user
         const user = await prisma.user.findUnique({ where: { email } });
-        
+
         // Check if user exists and is admin
         if (!user || user.role !== 'ADMIN') {
-            throw new UnauthorizedError('Invalid credentials');
+            throw UnauthorizedError('Invalid credentials');
         }
 
         // Verify password
         const isValidPassword = await bcrypt.compare(password, user.passwordHash);
         if (!isValidPassword) {
-            throw new UnauthorizedError('Invalid credentials');
+            throw UnauthorizedError('Invalid credentials');
         }
 
         // Check if account is active
         if (user.status !== 'ACTIVE') {
-            throw new UnauthorizedError('Account is suspended');
+            throw UnauthorizedError('Account is suspended');
         }
 
         // Generate tokens
-        const accessToken = signAccessToken({ 
-            sub: user.id, 
-            email: user.email, 
-            role: user.role 
+        const accessToken = signAccessToken({
+            sub: user.id,
+            email: user.email,
+            role: user.role
         });
         const refreshToken = signRefreshToken({ sub: user.id });
 
@@ -52,10 +52,10 @@ export const adminLogin = async (req, res, next) => {
         });
 
         res.json({
-            user: { 
-                id: user.id, 
-                email: user.email, 
-                role: user.role 
+            user: {
+                id: user.id,
+                email: user.email,
+                role: user.role
             },
             accessToken
         });

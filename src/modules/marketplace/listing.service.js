@@ -23,32 +23,32 @@ export const ListingStatus = {
  */
 export const createListing = async (data, sellerId, context = {}) => {
   const { assetId, price, currency, expiryDate, quantity } = data;
-  
+
   // Validate required parameters
   const missingFields = [];
   if (!assetId) missingFields.push('assetId');
   if (!price) missingFields.push('price');
   if (!currency) missingFields.push('currency');
   if (!expiryDate) missingFields.push('expiryDate');
-  
+
   if (missingFields.length > 0) {
-    throw new BadRequestError(`Missing required parameters: ${missingFields.join(', ')}`);
+    throw BadRequestError(`Missing required parameters: ${missingFields.join(', ')}`);
   }
-  
+
   // Find custody record
   const custodyRecord = await prisma.custodyRecord.findUnique({
     where: { assetId }
   });
-  
+
   if (!custodyRecord) {
-    throw new NotFoundError(`Asset ${assetId} not found`);
+    throw NotFoundError(`Asset ${assetId} not found`);
   }
-  
+
   // Verify custody record is in MINTED status
   if (custodyRecord.status !== 'MINTED') {
-    throw new BadRequestError(`Asset must be minted before listing. Current status: ${custodyRecord.status}`);
+    throw BadRequestError(`Asset must be minted before listing. Current status: ${custodyRecord.status}`);
   }
-  
+
   // For dashboard users, we need to create an ownership record if it doesn't exist
   // Check if ownership exists
   let ownership = await prisma.ownership.findUnique({
@@ -59,7 +59,7 @@ export const createListing = async (data, sellerId, context = {}) => {
       }
     }
   });
-  
+
   // If no ownership exists, create one (platform owner owns the minted token initially)
   if (!ownership) {
     ownership = await prisma.ownership.create({
@@ -73,22 +73,22 @@ export const createListing = async (data, sellerId, context = {}) => {
         currency: currency || 'USD'
       }
     });
-    
+
     logger.info('Created initial ownership record for listing', {
       assetId,
       ownerId: sellerId,
       quantity: quantity || '1'
     });
   }
-  
+
   // Verify user has enough quantity to list
   const availableQuantity = parseFloat(ownership.quantity);
   const listingQuantity = parseFloat(quantity || '1');
-  
+
   if (availableQuantity < listingQuantity) {
-    throw new BadRequestError(`Insufficient quantity. Available: ${availableQuantity}, Requested: ${listingQuantity}`);
+    throw BadRequestError(`Insufficient quantity. Available: ${availableQuantity}, Requested: ${listingQuantity}`);
   }
-  
+
   // Create listing
   const listing = await prisma.listing.create({
     data: {
@@ -104,14 +104,14 @@ export const createListing = async (data, sellerId, context = {}) => {
       expiryDate: new Date(expiryDate)
     }
   });
-  
+
   logger.info('Listing created', {
     listingId: listing.id,
     assetId,
     sellerId,
     price
   });
-  
+
   // Log audit event
   await auditService.logEvent('LISTING_CREATED', {
     listingId: listing.id,
@@ -124,7 +124,7 @@ export const createListing = async (data, sellerId, context = {}) => {
     actor: sellerId,
     ...context
   });
-  
+
   return listing;
 };
 
@@ -142,11 +142,11 @@ export const getListingDetails = async (listingId) => {
       }
     }
   });
-  
+
   if (!listing) {
-    throw new NotFoundError(`Listing ${listingId} not found`);
+    throw NotFoundError(`Listing ${listingId} not found`);
   }
-  
+
   // Get custody record and asset metadata
   const custodyRecord = await prisma.custodyRecord.findUnique({
     where: { id: listing.custodyRecordId },
@@ -154,11 +154,11 @@ export const getListingDetails = async (listingId) => {
       assetMetadata: true
     }
   });
-  
+
   // Calculate bid statistics
   const bidCount = listing.bids.length;
   const highestBid = listing.bids.length > 0 ? listing.bids[0].amount : null;
-  
+
   return {
     ...listing,
     asset: custodyRecord,
@@ -172,12 +172,12 @@ export const getListingDetails = async (listingId) => {
  */
 export const listActiveListings = async (filters = {}) => {
   const { assetType, priceMin, priceMax, blockchain, sortBy, sortOrder } = filters;
-  
+
   // Build where clause
   const where = {
     status: ListingStatus.ACTIVE
   };
-  
+
   // Apply filters
   if (assetType || blockchain) {
     where.custodyRecordId = {
@@ -194,14 +194,14 @@ export const listActiveListings = async (filters = {}) => {
       }).then(records => records.map(r => r.id))
     };
   }
-  
+
   // Price range filter
   if (priceMin || priceMax) {
     where.price = {};
     if (priceMin) where.price.gte = priceMin;
     if (priceMax) where.price.lte = priceMax;
   }
-  
+
   // Build orderBy clause
   let orderBy = {};
   if (sortBy === 'price') {
@@ -213,7 +213,7 @@ export const listActiveListings = async (filters = {}) => {
   } else {
     orderBy.createdAt = 'desc'; // Default sort
   }
-  
+
   const listings = await prisma.listing.findMany({
     where,
     orderBy,
@@ -226,7 +226,7 @@ export const listActiveListings = async (filters = {}) => {
       }
     }
   });
-  
+
   // Enrich with asset metadata and bid statistics
   const enrichedListings = await Promise.all(
     listings.map(async (listing) => {
@@ -236,13 +236,13 @@ export const listActiveListings = async (filters = {}) => {
           assetMetadata: true
         }
       });
-      
+
       const bidCount = await prisma.bid.count({
         where: { listingId: listing.id }
       });
-      
+
       const highestBid = listing.bids.length > 0 ? listing.bids[0].amount : null;
-      
+
       return {
         ...listing,
         asset: custodyRecord,
@@ -251,7 +251,7 @@ export const listActiveListings = async (filters = {}) => {
       };
     })
   );
-  
+
   return enrichedListings;
 };
 
@@ -262,21 +262,21 @@ export const cancelListing = async (listingId, userId, context = {}) => {
   const listing = await prisma.listing.findUnique({
     where: { id: listingId }
   });
-  
+
   if (!listing) {
-    throw new NotFoundError(`Listing ${listingId} not found`);
+    throw NotFoundError(`Listing ${listingId} not found`);
   }
-  
+
   // Verify requester is the original seller
   if (listing.sellerId !== userId) {
-    throw new ForbiddenError('Only the seller can cancel this listing');
+    throw ForbiddenError('Only the seller can cancel this listing');
   }
-  
+
   // Check if listing can be cancelled
   if (listing.status !== ListingStatus.ACTIVE) {
-    throw new BadRequestError(`Cannot cancel listing with status ${listing.status}`);
+    throw BadRequestError(`Cannot cancel listing with status ${listing.status}`);
   }
-  
+
   // Update listing status
   const updated = await prisma.listing.update({
     where: { id: listingId },
@@ -285,13 +285,13 @@ export const cancelListing = async (listingId, userId, context = {}) => {
       updatedAt: new Date()
     }
   });
-  
+
   logger.info('Listing cancelled', {
     listingId,
     assetId: listing.assetId,
     sellerId: userId
   });
-  
+
   // Log audit event
   await auditService.logEvent('LISTING_CANCELLED', {
     listingId,
@@ -301,7 +301,7 @@ export const cancelListing = async (listingId, userId, context = {}) => {
     actor: userId,
     ...context
   });
-  
+
   return updated;
 };
 
@@ -311,7 +311,7 @@ export const cancelListing = async (listingId, userId, context = {}) => {
  */
 export const expireListings = async () => {
   const now = new Date();
-  
+
   const expiredListings = await prisma.listing.updateMany({
     where: {
       status: ListingStatus.ACTIVE,
@@ -324,11 +324,11 @@ export const expireListings = async () => {
       updatedAt: now
     }
   });
-  
+
   logger.info('Expired listings updated', {
     count: expiredListings.count
   });
-  
+
   return expiredListings.count;
 };
 

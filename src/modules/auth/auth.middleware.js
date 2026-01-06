@@ -78,10 +78,25 @@ export const authenticate = async (req, res, next) => {
         // For development/local dashboard testing, allow a dummy signature
 
         if (!isDummy) {
-            // Real verification would go here (using apiKey.secretKey)
-            // For now, we're building the infrastructure
-            // const isValid = await verifySignatureWithSecret(signature, req.method, req.path, timestamp, req.body, apiKey.secretKey);
-            // if (!isValid) throw new UnauthorizedError('Invalid signature');
+            // Real verification (using apiKey.secretKey)
+            if (!apiKey.secretKey) {
+                logger.warn('Authentication failed: Secret key not available for verification', { publicKey });
+                throw UnauthorizedError('API key misconfigured for HMAC');
+            }
+
+            const isValid = await verifySignatureWithSecret(
+                signature,
+                req.method,
+                req.path,
+                timestamp,
+                req.body,
+                apiKey.secretKey
+            );
+
+            if (!isValid) {
+                logger.warn('Authentication failed: Invalid signature', { publicKey });
+                throw UnauthorizedError('Invalid signature');
+            }
         }
 
         // Note: For signature verification, we need the plain secret

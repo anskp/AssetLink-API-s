@@ -8,12 +8,12 @@ export const register = async (req, res, next) => {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            throw new BadRequestError('Email and password are required');
+            throw BadRequestError('Email and password are required');
         }
 
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
-            throw new ConflictError('User with this email already exists');
+            throw ConflictError('User with this email already exists');
         }
 
         const passwordHash = await bcrypt.hash(password, 10);
@@ -51,16 +51,16 @@ export const login = async (req, res, next) => {
         const { email, password } = req.body;
 
         if (!email || !password) {
-            throw new BadRequestError('Email and password are required');
+            throw BadRequestError('Email and password are required');
         }
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-            throw new UnauthorizedError('Invalid email or password');
+            throw UnauthorizedError('Invalid email or password');
         }
 
         if (user.status !== 'ACTIVE') {
-            throw new UnauthorizedError('User account is suspended');
+            throw UnauthorizedError('User account is suspended');
         }
 
         const accessToken = signAccessToken({ sub: user.id, email: user.email, role: user.role });
@@ -86,21 +86,21 @@ export const refresh = async (req, res, next) => {
     try {
         const refreshToken = req.cookies.refreshToken;
         if (!refreshToken) {
-            throw new UnauthorizedError('No refresh token provided');
+            throw UnauthorizedError('No refresh token provided');
         }
 
         const payload = verifyRefreshToken(refreshToken);
         const user = await prisma.user.findUnique({ where: { id: payload.sub } });
 
         if (!user || user.status !== 'ACTIVE') {
-            throw new UnauthorizedError('User not found or suspended');
+            throw UnauthorizedError('User not found or suspended');
         }
 
         const accessToken = signAccessToken({ sub: user.id, email: user.email, role: user.role });
 
         res.json({ accessToken });
     } catch (error) {
-        next(new UnauthorizedError('Invalid refresh token'));
+        next(UnauthorizedError('Invalid refresh token'));
     }
 };
 
@@ -113,7 +113,7 @@ export const me = async (req, res, next) => {
     try {
         const user = await prisma.user.findUnique({ where: { id: req.user.sub } });
         if (!user) {
-            throw new UnauthorizedError('User not found');
+            throw UnauthorizedError('User not found');
         }
         res.json({ id: user.id, email: user.email, role: user.role });
     } catch (error) {

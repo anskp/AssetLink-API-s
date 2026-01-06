@@ -126,11 +126,11 @@ export const initiateMintOperation = async (data, actor, context = {}) => {
         ...context
     });
 
-    logger.info('Mint operation initiated', { 
-        operationId: operation.id, 
-        assetId, 
+    logger.info('Mint operation initiated', {
+        operationId: operation.id,
+        assetId,
         tokenSymbol,
-        initiatedBy: actor 
+        initiatedBy: actor
     });
 
     return operation;
@@ -189,7 +189,7 @@ export const rejectOperation = async (operationId, actor, reason, context = {}) 
     }
 
     if (!canTransitionTo(operation.status, OperationStatus.REJECTED)) {
-        throw new BadRequestError(`Cannot reject operation in status ${operation.status}`);
+        throw BadRequestError(`Cannot reject operation in status ${operation.status}`);
     }
 
     const updated = await operationRepository.updateStatus(operationId, OperationStatus.REJECTED, {

@@ -16,6 +16,7 @@ model ApiKey {
   id            String   @id @default(uuid())
   publicKey     String   @unique
   secretKeyHash String   // HMAC secret (hashed)
+  secretKey     String?  // Plain secret key for HMAC verification (stored temporarily/dev)
   tenantId      String?
   userId        String?
   user          User?    @relation(fields: [userId], references: [id])

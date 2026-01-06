@@ -1,0 +1,18 @@
+
+--- 1. LINK ASSET (MAKER) ---
+curl -X POST "http://localhost:3000/v1/custody/link" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: ak_c909d5a9253acd9e54ef917f66eedf99" \
+  -H "x-signature: 8dfd3eb78568c5052ade0c46be1023e47026dd4c6fa27f8a0d53ee1d9e521c61" \
+  -H "x-timestamp: 1767689934" \
+  -d '{"assetId":"TEST_ASSET_1767689934836","assetType":"WATCH","assetName":"Rolex Submariner","estimatedValue":"15000","currency":"USD","documents":[],"images":[]}'
+
+--- 2. APPROVE ASSET (CHECKER) ---
+# Replace {id} with the ID returned from the link call
+echo 'Run the command below after replacing {id}:'
+curl -X POST "http://localhost:3000/v1/custody/{id}/approve" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: ak_0f6bf9ab66a61cd598e709b65357856d" \
+  -H "x-signature: 0937f6109b8a7c7f5bbefe308eff57e2d57b689906ada8bf10b25491b8324266" \
+  -H "x-timestamp: 1767689934" \
+  -d '{}'

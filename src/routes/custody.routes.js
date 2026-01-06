@@ -1,6 +1,6 @@
 import express from 'express';
 import * as custodyController from '../modules/custody/custody.controller.js';
-import { requirePermission, authenticateJwt } from '../modules/auth/auth.middleware.js';
+import { requirePermission, authenticateJwt, authenticate } from '../modules/auth/auth.middleware.js';
 
 /**
  * Custody Routes
@@ -33,21 +33,21 @@ router.get('/dashboard', authenticateJwt, custodyController.listCustodyRecordsDa
 // ============================================
 
 // Link asset to custody (requires write permission)
-router.post('/link', requirePermission('write'), custodyController.linkAsset);
+router.post('/link', authenticate, requirePermission('write'), custodyController.linkAsset);
 
 // Approve custody link (requires admin permission - CHECKER role)
-router.post('/:id/approve', requirePermission('admin'), custodyController.approveCustodyLink);
+router.post('/:id/approve', authenticate, requirePermission('admin'), custodyController.approveCustodyLink);
 
 // Reject custody link (requires admin permission - CHECKER role)
-router.post('/:id/reject', requirePermission('admin'), custodyController.rejectCustodyLink);
+router.post('/:id/reject', authenticate, requirePermission('admin'), custodyController.rejectCustodyLink);
 
 // Get custody statistics (requires read permission)
-router.get('/stats', requirePermission('read'), custodyController.getStatistics);
+router.get('/stats', authenticate, requirePermission('read'), custodyController.getStatistics);
 
 // List custody records (requires read permission)
-router.get('/', requirePermission('read'), custodyController.listCustodyRecords);
+router.get('/', authenticate, requirePermission('read'), custodyController.listCustodyRecords);
 
 // Get custody status by asset ID (requires read permission)
-router.get('/:assetId', requirePermission('read'), custodyController.getCustodyStatus);
+router.get('/:assetId', authenticate, requirePermission('read'), custodyController.getCustodyStatus);
 
 export default router;

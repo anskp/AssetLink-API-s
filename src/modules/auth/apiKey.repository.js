@@ -28,6 +28,7 @@ export const createApiKey = async (data) => {
             role,
             permissions,
             ipWhitelist,
+            secretKey,
             isActive: true
         }
     });
